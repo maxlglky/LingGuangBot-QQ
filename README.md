@@ -6,6 +6,7 @@
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue.svg">
   <img alt="node" src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg">
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-success.svg">
+  <a href="https://github.com/maxlglky/LingGuangBot-QQ/actions/workflows/test.yml"><img alt="tests" src="https://github.com/maxlglky/LingGuangBot-QQ/actions/workflows/test.yml/badge.svg"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg">
 </p>
 
