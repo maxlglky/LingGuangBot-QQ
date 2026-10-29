@@ -1,0 +1,56 @@
+{
+  "logLevel": "info",
+  "watchGroups": true,
+  "stateFile": "state.json",
+  "qq": {
+    "appId": "",
+    "appSecret": "",
+    "apiBase": "https://api.bot.qq.com",
+    "tokenBase": "https://bots.qq.com"
+  },
+  "x": {
+    "handle": "your_x_handle",
+    "displayName": "显示名",
+    "provider": "xcookie",
+    "includeReplies": true,
+    "includeRetweets": true,
+    "maxAgeHours": 24
+  },
+  "forward": {
+    "intervalSec": 300,
+    "intervalJitterSec": 60,
+    "accountStaggerSec": 3,
+    "style": "markdown",
+    "markdownImage": true,
+    "includeLink": true,
+    "maxChars": 1200,
+    "maxMarkdownChars": 4000,
+    "maxPerRun": 5,
+    "maxPushAgeHours": 6,
+    "maxImages": 6,
+    "perMinute": 15,
+    "perDay": 200,
+    "timeZone": "Asia/Shanghai"
+  },
+  "net": {
+    "proxy": "http://127.0.0.1:17899",
+    "xCookie": "auth_token=你的auth_token; ct0=你的ct0"
+  },
+  "commands": {
+    "enable": ["订阅", "开推"],
+    "disable": ["退订", "关推"],
+    "latest": ["最新"],
+    "reply": true
+  },
+  "accounts": [
+    {
+      "key": "yuna",
+      "handle": "yunachan_akb48",
+      "displayName": "秋山由奈",
+      "provider": "xcookie",
+      "userId": "1651920077669945346",
+      "includeRetweets": true,
+      "maxAgeHours": 24
+    }
+  ]
+}

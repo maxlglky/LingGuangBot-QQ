@@ -1,0 +1,39 @@
+{
+  "name": "x2qq",
+  "version": "1.0.0",
+  "description": "把 X（Twitter）账号的推文转发到 QQ 群 / 私聊，样式模仿 QQ 推文卡片",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "qq-bot",
+    "twitter",
+    "x",
+    "webhook",
+    "forwarder"
+  ],
+  "scripts": {
+    "doctor": "node src/main.js doctor",
+    "run": "node src/main.js run",
+    "once": "node src/main.js once",
+    "once:dry": "node src/main.js once --dry-run",
+    "status": "node src/main.js status",
+    "xprobe": "node src/main.js xprobe",
+    "groups": "node src/main.js groups",
+    "test": "node test/pipeline.test.js"
+  },
+  "files": [
+    "src",
+    "assets",
+    "scripts",
+    "test",
+    "start.cmd",
+    "stop.cmd",
+    "autostart.vbs",
+    "config.example.json",
+    "README.md",
+    "LICENSE"
+  ]
+}
