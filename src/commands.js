@@ -1,8 +1,8 @@
 /** 群指令解析：去掉 @ 占位与零宽字符后做关键词匹配。 */
 
 export const DEFAULT_COMMANDS = {
-  enable: ['订阅', '订阅推文', '开推', '开启推送', '/订阅', '/rss on', 'rss on', 'x2qq on', '/x2qq on'],
-  disable: ['退订', '取消订阅', '关推', '关闭推送', '/退订', '/rss off', 'rss off', 'x2qq off', '/x2qq off'],
+  enable: ['订阅', '订阅推文', '开推', '开启推送', '/订阅', '/rss on', 'rss on', 'lingguangbot-qq on', '/lingguangbot-qq on'],
+  disable: ['退订', '取消订阅', '关推', '关闭推送', '/退订', '/rss off', 'rss off', 'lingguangbot-qq off', '/lingguangbot-qq off'],
   latest: ['最新', '最新推文', '看看推文', '推文', '拉取', 'latest', '/最新'],
   pullCount: 3,
   reply: true,

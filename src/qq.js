@@ -117,7 +117,7 @@ export class QQClient {
         authorization: `QQBot ${token}`,
         'content-type': 'application/json',
         'x-union-appid': String(this.cfg.qq.appId),
-        'user-agent': 'x2qq/0.1',
+        'user-agent': 'LingGuangBot-QQ/1.0',
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       timeoutMs: 20_000,

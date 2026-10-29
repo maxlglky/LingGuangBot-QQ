@@ -11,15 +11,12 @@
   "x": {
     "handle": "your_x_handle",
     "displayName": "显示名",
-    "provider": "xcookie",
-    "includeReplies": true,
+    "includeReplies": false,
     "includeRetweets": true,
     "maxAgeHours": 24
   },
   "forward": {
     "intervalSec": 300,
-    "intervalJitterSec": 60,
-    "accountStaggerSec": 3,
     "style": "markdown",
     "markdownImage": true,
     "includeLink": true,
@@ -27,7 +24,7 @@
     "maxMarkdownChars": 4000,
     "maxPerRun": 5,
     "maxPushAgeHours": 6,
-    "maxImages": 6,
+    "maxImages": 4,
     "perMinute": 15,
     "perDay": 200,
     "timeZone": "Asia/Shanghai"

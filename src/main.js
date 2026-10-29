@@ -16,7 +16,7 @@ import { createLogger, readJson, truncate } from './util.js';
 import { XCookieClient, extractTimelineItems } from './xgraphql.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const CONFIG_PATH = process.env.X2QQ_CONFIG || join(ROOT, 'config.json');
+const CONFIG_PATH = process.env.LINGGUANGBOT_QQ_CONFIG || process.env.X2QQ_CONFIG || join(ROOT, 'config.json');
 
 const DEFAULTS = {
   logLevel: 'info',
@@ -77,7 +77,7 @@ async function loadConfig() {
   if (!cfg.qq.appId || !cfg.qq.appSecret) {
     throw new Error('config.qq.appId / config.qq.appSecret 未填写');
   }
-  if (process.env.X2QQ_PROXY) cfg.net.proxy = process.env.X2QQ_PROXY;
+  if (process.env.LINGGUANGBOT_QQ_PROXY || process.env.X2QQ_PROXY) cfg.net.proxy = process.env.LINGGUANGBOT_QQ_PROXY || process.env.X2QQ_PROXY;
   cfg.assetsDir = resolve(ROOT, 'assets');
   if (cfg.forward.verifiedBadge !== false && !cfg.forward.verifiedBadgePath) {
     cfg.forward.verifiedBadgePath = join(cfg.assetsDir, 'verified.png');
@@ -799,7 +799,7 @@ async function cmdGroups(args) {
 }
 
 function usage() {
-  console.log(`x2qq — 把 X 账号的推文转发到 QQ 群
+  console.log(`LingGuangBot-QQ（凌光姬-QQ） — 把 X 账号的推文转发到 QQ 群
 
 用法:
   node src/main.js doctor            体检：凭据 / 推文源 / 群名单
@@ -860,7 +860,7 @@ try {
   process.exit(code);
 } catch (err) {
   console.error(`\n执行失败: ${err.message}`);
-  if (process.env.X2QQ_DEBUG) console.error(err.stack);
+  if (process.env.LINGGUANGBOT_QQ_DEBUG) console.error(err.stack);
   process.exit(1);
 }
 

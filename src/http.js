@@ -112,7 +112,7 @@ function once(url, opts) {
     const mod = isHttps ? https : http;
 
     const headers = {
-      'user-agent': 'x2qq/0.1 (Node.js)',
+      'user-agent': 'LingGuangBot-QQ/1.0 (Node.js)',
       accept: '*/*',
       'accept-encoding': 'gzip, deflate',
       ...(opts.headers || {}),

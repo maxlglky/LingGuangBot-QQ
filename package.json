@@ -1,7 +1,7 @@
 {
-  "name": "x2qq",
+  "name": "lingguangbot-qq",
   "version": "1.0.0",
-  "description": "把 X（Twitter）账号的推文转发到 QQ 群 / 私聊，样式模仿 QQ 推文卡片",
+  "description": "LingGuangBot-QQ（凌光姬-QQ）：把 X（Twitter）账号的推文转发到 QQ 群 / 私聊",
   "type": "module",
   "license": "MIT",
   "engines": {

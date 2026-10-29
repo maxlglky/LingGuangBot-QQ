@@ -73,7 +73,7 @@ export class GroupWatcher {
   async connectOnce() {
     const token = await this.getToken();
     const { status, data } = await requestJson(`${this.apiBase}/gateway`, {
-      headers: { authorization: `QQBot ${token}`, 'user-agent': 'x2qq/0.1' },
+      headers: { authorization: `QQBot ${token}`, 'user-agent': 'LingGuangBot-QQ/1.0' },
       timeoutMs: 15_000,
     });
     if (status !== 200 || !data?.url) {

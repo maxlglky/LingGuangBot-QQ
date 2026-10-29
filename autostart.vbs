@@ -1,5 +1,6 @@
-' 登录 Windows 时静默启动 x2qq（不弹黑窗）
-' 放到「启动」文件夹：%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\
+' 登录 Windows 时静默启动 LingGuangBot-QQ（凌光姬-QQ），不弹黑窗
+' 用法：右键本文件 → 创建快捷方式 → 把快捷方式放进「启动」文件夹
+'       %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\
 Set fso = CreateObject("Scripting.FileSystemObject")
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 

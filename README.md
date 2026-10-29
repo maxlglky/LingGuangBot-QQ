@@ -1,4 +1,4 @@
-# x2qq
+# LingGuangBot-QQ（凌光姬-QQ）
 
 > 把 X（Twitter）账号的推文自动搬到 QQ 群 / QQ 私聊，长得像 QQ 自带的推文卡片。
 
@@ -9,7 +9,7 @@
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg">
 </p>
 
-关注某个账号，但不想一直盯着 X？x2qq 会在 5 分钟内把新推文转进你的 QQ 群：
+关注某个账号，但不想一直盯着 X？LingGuangBot-QQ 会在 5 分钟内把新推文转进你的 QQ 群：
 头像、蓝 V、正文、配图、引用、转推、视频、时间、原帖链接，一样不少。
 
 - **零依赖**：只用 Node.js 内置模块，clone 下来就能跑，不需要 `npm install`
@@ -89,7 +89,7 @@
 
 ```bash
 # 1. 拿到代码
-git clone <repo-url> x2qq && cd x2qq
+git clone <repo-url> LingGuangBot-QQ && cd LingGuangBot-QQ
 
 # 2. 生成配置
 cp config.example.json config.json      # Windows: copy config.example.json config.json
@@ -400,6 +400,6 @@ node src/main.js xprobe             # 只验证 X 侧
 
 ## License
 
-[MIT](LICENSE) © 2026 x2qq contributors
+[MIT](LICENSE) © 2026 LingGuangBot-QQ contributors
 
 `assets/verified.png` 仅作蓝 V 徽章占位，如涉及商标问题请替换或删除。
