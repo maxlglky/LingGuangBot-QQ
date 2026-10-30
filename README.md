@@ -28,6 +28,7 @@
   - [五步跑起来](#五步跑起来)
   - [拿 X cookie](#拿-x-cookie)
   - [常驻与开机自启](#常驻与开机自启)
+  - [用 AI Agent 部署](#用-ai-agent-部署)
   - [上线检查清单](#上线检查清单)
 - [配置说明](#配置说明)
 - [群指令](#群指令)
@@ -162,6 +163,46 @@ set CLASH_EXE=C:\path\to\clash.exe
 node scripts\prepare-local-proxy.mjs C:\path\to\profile.yml 17899
 rem 之后 start.cmd 会自动拉起这个「只监听本机」的代理
 ```
+
+### 用 AI Agent 部署
+
+不想手动折腾？把下面**整段**复制给有终端权限的 AI Agent（Claude Code / Codex / Cursor 等），
+它会自己 clone、问你凭据、自检并启动：
+
+```text
+请帮我部署 LingGuangBot-QQ —— 一个用 Node.js 写的「X 推文转发到 QQ 群/私聊」的自托管服务。
+
+仓库：https://github.com/maxlglky/LingGuangBot-QQ
+运行要求：Node.js 22+（项目零第三方依赖，不需要 npm install）
+
+请按顺序执行，每步完成后简要汇报，遇到报错先诊断原因再继续：
+
+1. 把仓库 clone 到本地一个合适目录并进入。
+2. 阅读 README 的「部署」和「配置说明」两节，确认你理解了配置项含义。
+3. 复制 config.example.json 为 config.json。
+4. 向我索取以下信息，并只写入本地 config.json：
+   - QQ 机器人 AppID、AppSecret
+   - X 的 auth_token（以及可选的 ct0），用于拉取推文
+   - 本机代理地址（如果访问 X 需要代理；直连就留空）
+   注意：不要把这些值打印到对话里，也不要写进任何会被 git 提交的文件。
+5. 依次运行 `node src/main.js doctor` 和 `node src/main.js xprobe` 做自检。
+   如果报错，对照 README 的「FAQ / 排错」处理，常见的是：
+   - `401` → cookie 过期或无效
+   - `40034105` → 群没有开启「主动推送消息」权限
+6. 自检通过后启动常驻：
+   - Windows：运行 start.cmd
+   - Linux / macOS：`node src/main.js run`（需要后台常驻就用 systemd / pm2）
+7. 最后告诉我：
+   - 怎么在 QQ 群里让它开始工作（@机器人 发 `/订阅 <账号key>`）
+   - 怎么查看运行状态（`node src/main.js status`）
+   - 日志在哪里（`logs/run-YYYY-MM-DD.log`）
+
+约束：
+- 不要提交 config.json、state*.json、logs/、.proxy/
+- 不要修改 src/ 下的业务代码，除非是为了修复明显的环境兼容问题，改动前先说明。
+```
+
+> 提示：Agent 拿到凭据后建议你自己核对一遍 `config.json`；跑通后记得把 `config.json` 从任何备份/同步目录里排除。
 
 ### 上线检查清单
 
