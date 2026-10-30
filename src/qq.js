@@ -307,6 +307,38 @@ export class QQClient {
   }
 
   /**
+   * 核对本地缓存：把「链接已经不在素材库里」的条目删掉，避免拿死链去发新消息
+   * （表现就是群里「加载中」「加载失败」）。默认 15 分钟最多核对一次。
+   * @returns {Promise<number>} 清掉了几个失效条目
+   */
+  async verifyMediaCache({ maxAgeMs = 15 * 60_000, force = false } = {}) {
+    if (!force && this.mediaVerifiedAt && Date.now() - this.mediaVerifiedAt < maxAgeMs) return 0;
+    if (!this.mediaCache.size && !this.headerCache.size) return 0;
+    this.mediaVerifiedAt = Date.now();
+    try {
+      const alive = new Set((await this.listAllMedia()).map((i) => i.url));
+      let dropped = 0;
+      for (const [key, value] of [...this.mediaCache]) {
+        if (value?.url && !alive.has(value.url)) {
+          this.mediaCache.delete(key);
+          dropped += 1;
+        }
+      }
+      for (const [key, value] of [...this.headerCache]) {
+        if (value?.url && !alive.has(value.url)) this.headerCache.delete(key);
+      }
+      if (dropped) {
+        await this.saveMediaCache().catch(() => {});
+        this.logger.debug(`素材缓存核对：清掉 ${dropped} 条已失效的链接`);
+      }
+      return dropped;
+    } catch (err) {
+      this.logger.debug(`素材缓存核对失败: ${err.message}`);
+      return 0;
+    }
+  }
+
+  /**
    * 素材回收。
    *
    * 官方文档（素材管理）：
@@ -462,6 +494,8 @@ export class QQClient {
     { contentType = 'image/jpeg', fileName = 'image.jpg', force = false, ttlHours } = {},
   ) {
     await this.loadMediaCache();
+    // 复用它之前先确认它还在库里；死链发出去就是「加载失败」
+    await this.verifyMediaCache().catch(() => {});
     const md5 = createHash('md5').update(buffer).digest('hex');
     const cached = this.mediaCache.get(md5);
     // force=true 时忽略缓存重新上传。

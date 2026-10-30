@@ -546,6 +546,36 @@ test('素材回收：配额报错 40035007 时自动回收后重传一次', asyn
   await new Promise((r) => server.close(r));
 });
 
+test('发消息前核对缓存：库里已经没了的链接会被清掉，不再拿死链去发', async () => {
+  const qq = new QQClient({ ...baseConfig(), forward: { mediaCacheHours: 6 } }, captureLogger());
+  qq.mediaCacheFile = null;
+  qq.mediaCacheLoaded = true;
+  qq.mediaCache.set('dead', { url: 'qqbot-media://image/v1/gone', at: Date.now() });
+  qq.mediaCache.set('alive', { url: 'qqbot-media://image/v1/here', at: Date.now() });
+
+  qq.api = async (method, path) => {
+    if (path.startsWith('/v2/media-images')) {
+      return {
+        total: 1,
+        images: [
+          {
+            image_id: 'i1',
+            url: 'qqbot-media://image/v1/here',
+            created_at: String(Date.now() / 1000),
+          },
+        ],
+        next_cursor: '',
+      };
+    }
+    return {};
+  };
+
+  const dropped = await qq.verifyMediaCache({ force: true });
+  assert.equal(dropped, 1);
+  assert.equal(qq.mediaCache.has('dead'), false, '失效的缓存要删掉');
+  assert.equal(qq.mediaCache.has('alive'), true, '还在库里的要留着');
+});
+
 test('素材缓存带有效期：过期后重新上传，不再引用已失效的链接', async () => {
   const server = createServer((req, res) => {
     req.resume();
@@ -558,14 +588,19 @@ test('素材缓存带有效期：过期后重新上传，不再引用已失效�
   const port = server.address().port;
 
   let uploaded = 0;
+  const alive = [];
   const stubApi = async (method, path) => {
-    if (path === '/v2/media-images') return { total: 1, images: [] };
     if (path.endsWith('/prepare')) {
       return { presigned_url: `http://127.0.0.1:${port}/put`, upload_id: 'u1' };
     }
     if (path.endsWith('/complete')) {
       uploaded += 1;
-      return { url: `qqbot-media://image/v1/test${uploaded}` };
+      const url = `qqbot-media://image/v1/test${uploaded}`;
+      alive.push({ image_id: `id${uploaded}`, url, created_at: String(Date.now() / 1000) });
+      return { url };
+    }
+    if (path.startsWith('/v2/media-images')) {
+      return { total: alive.length, images: alive, next_cursor: '' };
     }
     return {};
   };
