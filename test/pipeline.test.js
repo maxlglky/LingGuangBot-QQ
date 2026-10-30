@@ -315,6 +315,22 @@ test('图片单独发消息：卡片 1 条 + 图片 N 条，msg_seq 接着排且
   }
 });
 
+test('图片模式 auto：素材库宽裕就内嵌，快满了自动改成单独发', async () => {
+  const make = (forward, total) => {
+    const qq = new QQClient({ ...baseConfig(), forward }, captureLogger());
+    qq.mediaCacheFile = null;
+    qq.api = async () => ({ total, images: [] });
+    return qq;
+  };
+
+  assert.equal(await make({ imageMode: 'auto', mediaInlineUntil: 80 }, 52).wantInlineImages(), true);
+  assert.equal(await make({ imageMode: 'auto', mediaInlineUntil: 80 }, 85).wantInlineImages(), false);
+  assert.equal(await make({ imageMode: 'inline' }, 99).wantInlineImages(), true);
+  assert.equal(await make({ imageMode: 'message' }, 1).wantInlineImages(), false);
+  // 老配置项 markdownImage 仍然生效
+  assert.equal(await make({ markdownImage: true }, 99).wantInlineImages(), true);
+});
+
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {
   assert.equal(normalizeCommand('<@!BOT123> 订阅'), '订阅');
   assert.equal(matchKeyword('<@!BOT123> 订阅', DEFAULT_COMMANDS.enable), true);

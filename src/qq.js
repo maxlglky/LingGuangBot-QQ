@@ -259,6 +259,33 @@ export class QQClient {
   }
 
   /**
+   * 图片是内嵌进卡片，还是单独发「图片消息」。
+   * inline  = 内嵌（好看，但每张图占一张素材配额，100 张封顶）
+   * message = 单独发（不占配额，图不会失效，但会另起气泡）
+   * auto    = 素材库还宽裕就内嵌，快满了自动降级成单独发（默认，避免再撞 40035007）
+   */
+  async wantInlineImages(forward = this.cfg.forward || {}) {
+    const mode =
+      forward.imageMode || (forward.markdownImage === true ? 'inline' : 'message');
+    if (mode === 'inline') return true;
+    if (mode === 'message') return false;
+    const total = await this.mediaTotal().catch(() => 0);
+    const limit = forward.mediaInlineUntil ?? 80;
+    return total < limit;
+  }
+
+  /** 读素材库当前张数（带缓存，避免每条推送都打一次列表接口）。 */
+  async mediaTotal({ maxAgeMs = 5 * 60_000 } = {}) {
+    if (this.mediaTotalCache && Date.now() - this.mediaTotalCache.at < maxAgeMs) {
+      return this.mediaTotalCache.total;
+    }
+    const list = await this.api('GET', '/v2/media-images');
+    const total = Number(list?.total || 0);
+    this.mediaTotalCache = { total, at: Date.now() };
+    return total;
+  }
+
+  /**
    * 素材管理是 100 张的硬上限：满了以后 `prepare` 直接报
    * 40035007 markdown image quota exceeded，之后所有的图（连头像）都传不上去。
    *
@@ -307,6 +334,7 @@ export class QQClient {
         }
       }
       if (!removed) return 0;
+      this.mediaTotalCache = { total: Math.max(0, total - removed), at: Date.now() };
 
       // 只丢掉被删掉的那几条缓存，其余的继续复用（别为了清缓存把整库重传一遍）
       let cacheChanged = false;

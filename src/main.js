@@ -57,8 +57,11 @@ const DEFAULTS = {
     maxPerRun: 5,
     sendImages: true,
     maxImages: 6,
-    // image: inline = 图片内嵌进卡片（走素材库，100 张上限）；message = 图片单独发（不占配额）
-    imageMode: 'message',
+    // imageMode: inline = 图内嵌进卡片（走素材库，100 张上限）
+    //            message = 图单独发（不占配额，图不会失效）
+    //            auto = 素材库还宽裕就内嵌，快满了自动降级成单独发（默认）
+    imageMode: 'auto',
+    mediaInlineUntil: 80,
     headerCacheHours: 12,
     avatarCacheHours: 168,
     mediaCacheHours: 6,
@@ -981,6 +984,16 @@ async function cmdMedia(args = []) {
   console.log(
     `素材缓存有效期: ${ttl}h   回收阈值: ${cfg.forward.mediaPruneAt ?? 88} 张` +
       `（回收时保留最新 ${cfg.forward.mediaPruneKeepNewest ?? 4} 张）`,
+  );
+  const mode = cfg.forward.imageMode || (cfg.forward.markdownImage ? 'inline' : 'message');
+  const until = cfg.forward.mediaInlineUntil ?? 80;
+  console.log(
+    `图片模式: ${mode}` +
+      (mode === 'auto'
+        ? `（素材库 < ${until} 张时内嵌进卡片，否则改成单独发图片消息）`
+        : mode === 'inline'
+          ? '（内嵌进卡片，受 100 张素材上限影响）'
+          : '（单独发图片消息，不占素材配额）'),
   );
   const ts = images.map((i) => Number(i.created_at || 0)).filter(Boolean).sort((a, b) => a - b);
   if (ts.length) {
