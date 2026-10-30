@@ -144,9 +144,12 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     lines.push(`![推文配图 #${width}px #${height}px](${img.url})`);
   });
 
-  // 有视频时，Markdown 放不下，会在卡片之后单独发，这里先提示一下
-  if (ctx.videoCount > 0) {
-    lines.push('', `> 🎬 视频共 ${ctx.videoCount} 段，见下一条消息`);
+  // 图片 / 视频放不进卡片时，卡片里留一行提示，稍后单独发
+  const extras = [];
+  if (ctx.videoCount > 0) extras.push(`🎬 视频共 ${ctx.videoCount} 段`);
+  if (ctx.imageCount > 0) extras.push(`🖼 图片共 ${ctx.imageCount} 张`);
+  if (extras.length) {
+    lines.push('', `> ${extras.join('，')}，见下条消息`);
   }
 
   // 引用推文、被回复的原推都用 > 缩进，和主推区分开

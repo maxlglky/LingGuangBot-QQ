@@ -57,7 +57,10 @@ const DEFAULTS = {
     maxPerRun: 5,
     sendImages: true,
     maxImages: 6,
+    // image: inline = 图片内嵌进卡片（走素材库，100 张上限）；message = 图片单独发（不占配额）
+    imageMode: 'message',
     headerCacheHours: 12,
+    avatarCacheHours: 168,
     mediaCacheHours: 6,
     mediaPruneAt: 88,
     mediaKeep: 70,

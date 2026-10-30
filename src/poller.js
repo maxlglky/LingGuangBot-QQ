@@ -90,17 +90,31 @@ export class Poller {
   }
 
   /** 回复类型：把被回复的原推也拉下来，作为缩进块附在卡片里（拉不到就跳过）。 */
-  async buildReplyContext(displayTweet) {
+  /**
+   * 图片是内嵌进卡片，还是单独发「图片消息」。
+   * inline = 走素材库（好看，但素材库只有 100 张，满了就得回收旧图）；
+   * message = 走群图片消息（不占素材库配额，图不会失效，但会另起气泡）。
+   */
+  wantInlineImages(acfg) {
+    const mode = acfg?.forward?.imageMode;
+    if (mode) return mode === 'inline';
+    return acfg?.forward?.markdownImage === true;
+  }
+
+  async buildReplyContext(displayTweet, acfg) {
     const parentId = displayTweet?.replyToStatusId;
     if (!parentId) return null;
     try {
       const parent = await fetchTweetDetail(parentId);
       if (!parent) return null;
-      return await this.qq.prepareQuote({
-        ...parent,
-        // 原推按它自己的账号名显示，和一张普通卡片一致
-        author: parent.author || parent.screenName || displayTweet.replyTo || '对方',
-      });
+      return await this.qq.prepareQuote(
+        {
+          ...parent,
+          // 原推按它自己的账号名显示，和一张普通卡片一致
+          author: parent.author || parent.screenName || displayTweet.replyTo || '对方',
+        },
+        { photos: this.wantInlineImages(acfg || this.cfg) },
+      );
     } catch (err) {
       this.logger.warn(`拉取原推失败（不影响主卡片）: ${err.message}`);
       return null;
@@ -284,7 +298,9 @@ export class Poller {
       let quoteBlock = null;
       if (detail?.quote && acfg.forward.quote !== false) {
         try {
-          quoteBlock = await this.qq.prepareQuote(detail.quote);
+          quoteBlock = await this.qq.prepareQuote(detail.quote, {
+            photos: this.wantInlineImages(acfg),
+          });
         } catch (err) {
           this.logger.warn(`[${label}] 准备引用推文失败: ${err.message}`);
         }
@@ -306,7 +322,7 @@ export class Poller {
 
         try {
           const replyContext = displayTweet?.isReply
-            ? await this.buildReplyContext(displayTweet)
+            ? await this.buildReplyContext(displayTweet, acfg)
             : null;
           const result = await this.qq.deliver(
             group.openid,
@@ -315,7 +331,8 @@ export class Poller {
             {
               sendImages: acfg.forward.sendImages !== false,
               style: acfg.forward.style || 'text',
-              markdownImage: acfg.forward.markdownImage === true,
+              markdownImage: this.wantInlineImages(acfg),
+              quotePhotos: detail?.quote?.photos || [],
               header,
               photos,
               videos,
@@ -456,7 +473,9 @@ export class Poller {
     let quoteBlock = null;
     if (detail?.quote && acfg.forward.quote !== false) {
       try {
-        quoteBlock = await this.qq.prepareQuote(detail.quote);
+        quoteBlock = await this.qq.prepareQuote(detail.quote, {
+          photos: this.wantInlineImages(acfg),
+        });
       } catch {
         /* 引用块失败不影响主卡片 */
       }
@@ -466,7 +485,9 @@ export class Poller {
       ? detail.photos
       : (tweet.images || []).map((url) => ({ url }));
 
-    const replyContext = displayTweet?.isReply ? await this.buildReplyContext(displayTweet) : null;
+    const replyContext = displayTweet?.isReply
+      ? await this.buildReplyContext(displayTweet, acfg)
+      : null;
     const wantTranslate = this.store?.isTranslateOn?.(groupOpenid) === true;
     const translatedText = wantTranslate
       ? await this.translateTweet(acfg, detail?.id || statusId)
@@ -478,7 +499,8 @@ export class Poller {
       replyTo: options.replyTo || null,
       sendImages: acfg.forward.sendImages !== false,
       style: acfg.forward.style || 'text',
-      markdownImage: acfg.forward.markdownImage === true,
+      markdownImage: this.wantInlineImages(acfg),
+      quotePhotos: detail?.quote?.photos || [],
       header,
       photos,
       videos: detail?.videos || [],

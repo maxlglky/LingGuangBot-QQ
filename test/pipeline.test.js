@@ -267,6 +267,54 @@ test('发送图片：先上传 file_info 再发 msg_type=7', async () => {
   }
 });
 
+test('图片单独发消息：卡片 1 条 + 图片 N 条，msg_seq 接着排且不超 5', async () => {
+  const calls = [];
+  const { server, port } = await startMockQq((url, body) => calls.push({ url, body }));
+
+  try {
+    const cfg = baseConfig({
+      qq: { apiBase: `http://127.0.0.1:${port}`, tokenBase: `http://127.0.0.1:${port}` },
+    });
+    const qq = new QQClient(cfg, captureLogger());
+    let cardText = '';
+    const result = await qq.deliver('GROUP_M', 'text', [], {
+      sendImages: true,
+      style: 'markdown',
+      markdownImage: false, // message 模式：图片不内嵌
+      maxImages: 6,
+      photos: [
+        { url: 'https://pbs.twimg.com/media/a.jpg' },
+        { url: 'https://pbs.twimg.com/media/b.jpg' },
+      ],
+      quotePhotos: [{ url: 'https://pbs.twimg.com/media/c.jpg' }],
+      replyTo: { msgId: 'MSG1', seq: 1 },
+      markdownBuilder: (ctx) => {
+        cardText = `图片 ${ctx.imageCount} 张`;
+        return cardText;
+      },
+    });
+
+    assert.equal(result.markdown, true);
+    assert.equal(result.images, 3, '主推 2 张 + 引用 1 张都该发出来');
+    assert.equal(cardText, '图片 3 张', '卡片要告诉用户有几张图在后面');
+
+    const markdownCall = calls.find((c) => c.body.msg_type === 2);
+    assert.equal(markdownCall.body.msg_id, 'MSG1');
+    assert.equal(markdownCall.body.msg_seq, 1);
+
+    const medias = calls.filter((c) => c.body.msg_type === 7);
+    assert.equal(medias.length, 3);
+    assert.deepEqual(
+      medias.map((c) => c.body.msg_seq),
+      [2, 3, 4],
+      '图片消息的 msg_seq 要接着卡片往后排',
+    );
+    assert.ok(medias.every((c) => c.body.msg_id === 'MSG1'));
+  } finally {
+    server.close();
+  }
+});
+
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {
   assert.equal(normalizeCommand('<@!BOT123> 订阅'), '订阅');
   assert.equal(matchKeyword('<@!BOT123> 订阅', DEFAULT_COMMANDS.enable), true);

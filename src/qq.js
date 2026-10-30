@@ -215,7 +215,11 @@ export class QQClient {
       try {
         const local = await this.downloadImage(candidate);
         if (!local) continue;
-        const uploaded = await this.uploadMarkdownImage(local.buffer, imageMeta(local));
+        const uploaded = await this.uploadMarkdownImage(local.buffer, {
+          ...imageMeta(local),
+          // 头像基本不会变，缓存久一点，别反复占素材配额
+          ttlHours: this.cfg.forward?.avatarCacheHours ?? 168,
+        });
         this.headerCache.set(candidate, { url: uploaded.url, at: Date.now() });
         out.avatar = uploaded.url;
         break;
@@ -239,6 +243,7 @@ export class QQClient {
           const uploaded = await this.uploadMarkdownImage(buf, {
             contentType: 'image/png',
             fileName: 'verified.png',
+            ttlHours: this.cfg.forward?.avatarCacheHours ?? 168,
           });
           this.headerCache.set(key, { url: uploaded.url, at: Date.now() });
           out.badge = uploaded.url;
@@ -361,8 +366,8 @@ export class QQClient {
     return results.filter(Boolean);
   }
 
-  /** 准备引用推文的缩进块素材。 */
-  async prepareQuote(quote, { maxWidth = 520, limit = 2 } = {}) {
+  /** 准备引用推文的缩进块素材（imageMode=message 时不准备图片，改走图片消息）。 */
+  async prepareQuote(quote, { maxWidth = 520, limit = 2, photos = true } = {}) {
     if (!quote) return null;
     let avatar = null;
     if (quote.authorAvatar) {
@@ -376,7 +381,9 @@ export class QQClient {
         .catch(() => null);
       badge = header?.badge || null;
     }
-    const images = await this.prepareInlineImages(quote.photos || [], { maxWidth, limit });
+    const images = photos
+      ? await this.prepareInlineImages(quote.photos || [], { maxWidth, limit })
+      : [];
     return {
       avatar,
       badge,
@@ -404,15 +411,18 @@ export class QQClient {
    */
   async uploadMarkdownImage(
     buffer,
-    { contentType = 'image/jpeg', fileName = 'image.jpg', force = false } = {},
+    { contentType = 'image/jpeg', fileName = 'image.jpg', force = false, ttlHours } = {},
   ) {
     await this.loadMediaCache();
     const md5 = createHash('md5').update(buffer).digest('hex');
     const cached = this.mediaCache.get(md5);
-    // force=true 时忽略缓存重新上传（头像/徽章用）。
-    // 缓存带时效：过期的链接可能已经被 QQ 淘汰，继续用就是「加载中」。
+    // force=true 时忽略缓存重新上传。
+    // 缓存带时效：过期的链接可能已经被回收，继续用就是「加载中」。
+    // 头像这类长期不变的图可以传更长的 ttlHours，省配额。
     if (cached && !force) {
-      const fresh = this.mediaCacheTtlMs > 0 && Date.now() - Number(cached.at || 0) <= this.mediaCacheTtlMs;
+      const ttlMs =
+        ttlHours === undefined ? this.mediaCacheTtlMs : Math.max(0, Number(ttlHours) * 3600_000);
+      const fresh = ttlMs > 0 && Date.now() - Number(cached.at || 0) <= ttlMs;
       if (fresh) return { url: cached.url, previewUrl: cached.previewUrl || null };
       this.mediaCache.delete(md5);
     }
@@ -634,6 +644,7 @@ export class QQClient {
       content: content || ' ',
       msg_type: 7,
       media: { file_info: fileInfo },
+      ...extra,
     });
   }
 
@@ -708,10 +719,21 @@ export class QQClient {
           );
         }
 
+        // 不走内嵌时，图片单独作为「图片消息」发出去：不占素材库配额，
+        // 也就不会因为素材被回收而变成「加载失败」。
+        const mediaQueue =
+          !wantInline && opts.sendImages !== false
+            ? [
+                ...photos.slice(0, limit),
+                ...(opts.quotePhotos || []).slice(0, opts.maxQuoteImages ?? 2),
+              ]
+            : [];
+
         await this.sendGroupMarkdown(
           groupOpenid,
           opts.markdownBuilder({
             images,
+            imageCount: mediaQueue.length,
             header: opts.header || null,
             quote: opts.quote || null,
             name: opts.name,
@@ -724,20 +746,28 @@ export class QQClient {
         result.markdown = true;
         result.images = images.length;
 
-        // 卡片里没内嵌图片时，再单独补图片消息
-        if (!wantInline && opts.sendImages !== false) {
-          for (const photo of photos.slice(0, limit)) {
-            try {
-              const local = await this.downloadImage(photo.url);
-              const info = local
-                ? await this.uploadGroupImageBuffer(groupOpenid, local.buffer, local.name)
-                : await this.uploadGroupImage(groupOpenid, photo.url);
-              await this.sendGroupMedia(groupOpenid, info);
-              result.images += 1;
-            } catch (err) {
-              result.errors.push(`图片: ${err.message}`);
-              break;
-            }
+        // 卡片占了 seq = replyTo.seq，后面的图片消息要接着往后排（最多到 5）
+        let seq = opts.replyTo ? (opts.replyTo.seq ?? 1) + 1 : 0;
+        const nextExtra = () => {
+          if (!seq) return {};
+          if (seq > 5) return null; // 被动回复最多 5 条
+          const extra = { msg_id: opts.replyTo.msgId, msg_seq: seq };
+          seq += 1;
+          return extra;
+        };
+
+        for (const photo of mediaQueue) {
+          const extra = nextExtra();
+          if (!extra) break;
+          try {
+            const local = await this.downloadImage(photo.url);
+            const info = local
+              ? await this.uploadGroupImageBuffer(groupOpenid, local.buffer, local.name)
+              : await this.uploadGroupImage(groupOpenid, photo.url);
+            await this.sendGroupMedia(groupOpenid, info, ' ', extra);
+            result.images += 1;
+          } catch (err) {
+            result.errors.push(`图片: ${err.message}`);
           }
         }
 
@@ -756,7 +786,8 @@ export class QQClient {
             });
             if (!local) throw new Error('视频下载失败');
             const info = await this.uploadGroupFileBuffer(groupOpenid, local.buffer, local.name, 2);
-            await this.sendGroupMedia(groupOpenid, info, '🎬 视频');
+            const videoExtra = nextExtra();
+            if (videoExtra) await this.sendGroupMedia(groupOpenid, info, '🎬 视频', videoExtra);
             result.videos = 1;
           } catch (err) {
             result.errors.push(`视频: ${err.message}`);

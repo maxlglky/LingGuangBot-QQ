@@ -247,15 +247,17 @@ rem 之后 start.cmd 会自动拉起这个只监听本机的代理
 | `forward.accountStaggerSec` | `3` | 同一轮内账号之间随机错开 |
 | `forward.maxPerRun` | `5` | 每轮最多推送几条 |
 | `forward.maxPushAgeHours` | `6` | 超过这个小时数的推文不再补发（`0` 表示关闭） |
-| `forward.maxImages` | `6` | 单条最多内嵌几张图 |
+| `forward.maxImages` | `6` | 单条最多发几张图 |
+| `forward.imageMode` | `message` | `message` = 图片单独作为图片消息发（**推荐**，不占素材库配额，图不会失效）；`inline` = 内嵌进卡片（好看，但吃素材库 100 张配额） |
 | `forward.headerCacheHours` | `12` | 头像 / 徽章素材的缓存时长，过期后重新上传（防止素材被淘汰后链接失效） |
-| `forward.mediaCacheHours` | `6` | 图片素材缓存的有效期。超过就重新上传，避免复用已被 QQ 淘汰的链接（群里表现是图片一直「加载中」）。`0` = 每次重传 |
+| `forward.avatarCacheHours` | `168` | 头像/徽章的素材复用时长（头像基本不变，缓存久一点省配额） |
+| `forward.mediaCacheHours` | `6` | 内嵌图片素材缓存的有效期。超过就重新上传，避免复用已被回收的链接（群里表现是图片一直「加载中」）。`0` = 每次重传 |
 | `forward.mediaPruneAt` | `88` | 素材库用量达到多少张时触发回收 |
 | `forward.mediaKeep` | `70` | 回收后想降到多少张以下 |
 | `forward.mediaPruneKeepNewest` | `4` | 回收时永远保留最新的几张，避免把刚发出去的图删掉 |
 | `forward.maxMarkdownChars` | `4000` | 单条 Markdown 上限 |
 | `forward.style` | `markdown` | `markdown` / `text` / `media` / `ark` |
-| `forward.markdownImage` | `true` | 图片是否内嵌进卡片 |
+| `forward.markdownImage` | `false` | 老配置项，等价于 `imageMode: "inline"`，保留兼容 |
 | `forward.perMinute` / `perDay` | `15` / `200` | 每个会话的发送频率限制 |
 | `forward.timeZone` | `Asia/Shanghai` | 卡片时间使用的时区 |
 | `accounts[]` | — | 账号列表，见下 |
@@ -469,19 +471,22 @@ node src/main.js xprobe             # 只验证 X 侧
 插一个不可见字符就能阻断语法，不影响阅读。
 
 **为什么图片要传素材、还会“消失”？** QQ 的 Markdown 只认自己的素材链接
-（`qqbot-media://`），所以每张图都要先传到「素材管理」。这个库是 **100 张硬上限**，
-而且列表接口一页只返回 20 条、`offset/limit/page` 都不生效 —— 也就是说
-**满了以后只能回收看得到的那 20 条**，剩下的既看不到也删不掉。
-所以本项目的策略是：
+（`qqbot-media://`），直连 `pbs.twimg.com` 或者第三方图片代理在客户端里都加载不出来
+（实测过）。而这个素材库是 **100 张硬上限**，满了以后连头像都传不上去
+（`40035007 markdown image quota exceeded`）。
 
-1. 缓存带时效（`mediaCacheHours`），绝不长期复用可能已失效的链接；
-2. 用量到 `mediaPruneAt` 就回收旧素材，但保留最新 `mediaPruneKeepNewest` 张；
-3. 万一还是撞上 `40035007`，会自动回收一批再重传一次；
-4. 实在腾不出配额时，**只发文字，不挡住推送本身**。
+所以默认 `imageMode: "message"`：**卡片里不放图，图片作为「图片消息」跟在卡片后面**。
+图片消息走的是群文件通道（`/v2/groups/{id}/files` + `msg_type=7`），
+不占素材库配额，也就不会因为回收而失效 —— 图能一直留着。
 
-代价是：**历史消息里的图会在素材被回收后失效**，这是平台限制，无法绕过。
-好在“看不到的旧素材”并不是永久黑洞：每删掉一批，列表窗口就会往前推进，
-所以反复回收能把整个库慢慢排空（`media --clean` 就是干这个的）。
+如果你更在意“卡片里带图”的观感，可以设 `imageMode: "inline"`，代价是：
+
+1. 每张图占一张素材配额（100 张封顶）；
+2. 到 `mediaPruneAt` 就要回收旧素材，**被回收的老消息图片会失效**；
+3. 撞上 `40035007` 时本程序会自动回收一批再重传，实在腾不出配额就只发文字。
+
+素材库还有个坑：列表接口一页只返回 20 条、`offset/limit/page` 都不生效，
+所以“看不到的旧素材”只能靠反复回收慢慢排空（`media --clean`）。
 
 ---
 
