@@ -173,38 +173,61 @@ async function cmdDoctor() {
 }
 
 /** 「最新」指令：用被动回复把最近几条推文发出来（主动消息没权限时的兜底）。 */
-async function replyLatest({ cfg, qq, logger, poller, openid, msgId }) {
+/**
+ * 「最新」指令：只发一条推文，且必须是 Markdown 卡片（走被动回复通道）。
+ * - /最新        取本会话已订阅账号里最新的一条
+ * - /最新 <账号>  取指定账号最新的一条（不要求已订阅）
+ */
+async function replyLatest({ cfg, qq, poller, store, logger, openid, msgId, accountKey = '' }) {
   if (!msgId) return;
-  const count = Math.max(1, Math.min(cfg.commands?.pullCount ?? 3, 5));
-  try {
-    // 汇总所有账号的最近推文，按时间排序后取最新的几条
-    const all = [];
-    for (const account of cfg.accounts || []) {
-      const collected = await poller.collectTweets(account).catch(() => []);
-      for (const item of collected) all.push({ account, tweet: item.tweet });
-    }
-    all.sort((a, b) => (a.tweet.published?.getTime() || 0) - (b.tweet.published?.getTime() || 0));
-    const picks = all.slice(-count).reverse();
 
-    if (!picks.length) {
+  try {
+    let account = null;
+    if (accountKey) {
+      account = resolveAccount(cfg.accounts, accountKey);
+      if (!account) {
+        const keys = (cfg.accounts || []).map((a) => a.key).join(' / ');
+        await qq.sendGroupReply(openid, `找不到账号「${accountKey}」。可用：${keys}`, msgId, 1);
+        return;
+      }
+    }
+
+    // 没有指定账号时，只在本会话已订阅的账号里找
+    const keys = account ? [account.key] : store.subscribedAccounts(openid);
+    const candidates = (cfg.accounts || []).filter((a) => keys.includes(a.key));
+    if (!candidates.length) {
+      await qq.sendGroupReply(
+        openid,
+        '本会话还没有订阅任何账号。先发 /订阅 <账号>，或者用 /最新 <账号> 指定一个。',
+        msgId,
+        1,
+      );
+      return;
+    }
+
+    let latestPick = null;
+    for (const acc of candidates) {
+      const collected = await poller.collectTweets(acc).catch(() => []);
+      for (const item of collected) {
+        const t = item.tweet.published?.getTime() || 0;
+        if (!latestPick || t > latestPick.time) latestPick = { account: acc, tweet: item.tweet, time: t };
+      }
+    }
+
+    if (!latestPick) {
       await qq.sendGroupReply(openid, '暂时没抓到推文，稍后再试。', msgId, 1);
       return;
     }
 
-    let seq = 1;
-    for (const { account, tweet } of picks) {
-      // 和日常推送走同一条渲染链路：卡片、头像、引用、回复上下文、翻译都一致
-      const r = await poller.sendTweetToGroup(account, tweet, openid, {
-        replyTo: { msgId, seq },
-      });
-      if (r?.errors?.length) logger.warn(`拉取最新推文部分失败: ${r.errors.join('; ')}`);
-      seq += 1;
-    }
-    logger.info(`会话 ${openid} 被动拉取了 ${picks.length} 条推文（Markdown 卡片）`);
+    const r = await poller.sendTweetToGroup(latestPick.account, latestPick.tweet, openid, {
+      replyTo: { msgId, seq: 1 },
+    });
+    if (r?.errors?.length) logger.warn(`/最新 部分失败: ${r.errors.join('; ')}`);
+    logger.info(`会话 ${openid} 拉取最新推文：${latestPick.account.key} ${latestPick.tweet.link}`);
   } catch (err) {
     logger.warn(`拉取最新推文失败: ${err.message}`);
     try {
-      await qq.sendGroupReply(openid, `拉取失败：${err.message}`, msgId, 5);
+      await qq.sendGroupReply(openid, `拉取失败：${err.message}`, msgId, 1);
     } catch {
       /* ignore */
     }
@@ -323,7 +346,17 @@ function createWatcher({ cfg, logger, store, qq, poller }) {
       }
 
       if (latest && !enable && !disable) {
-        await replyLatest({ cfg, qq, poller, logger, openid, msgId: msg.msgId });
+        const arg = extractCommandArg(msg.content, latestWords) || '';
+        await replyLatest({
+          cfg,
+          qq,
+          poller,
+          store,
+          logger,
+          openid,
+          msgId: msg.msgId,
+          accountKey: arg.trim(),
+        });
         return;
       }
 
