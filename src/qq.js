@@ -217,8 +217,9 @@ export class QQClient {
         if (!local) continue;
         const uploaded = await this.uploadMarkdownImage(local.buffer, {
           ...imageMeta(local),
-          // 头像基本不会变，缓存久一点，别反复占素材配额
-          ttlHours: this.cfg.forward?.avatarCacheHours ?? 168,
+          // 头像每次进程启动重传一张新的：素材被回收后旧链接会失效（表现为头像空白），
+          // 头像只有十几 KB，重传成本可以忽略。
+          force: true,
         });
         this.headerCache.set(candidate, { url: uploaded.url, at: Date.now() });
         out.avatar = uploaded.url;
@@ -243,7 +244,8 @@ export class QQClient {
           const uploaded = await this.uploadMarkdownImage(buf, {
             contentType: 'image/png',
             fileName: 'verified.png',
-            ttlHours: this.cfg.forward?.avatarCacheHours ?? 168,
+            // 同理：徽章也每次重传，避免引用已被回收的素材
+            force: true,
           });
           this.headerCache.set(key, { url: uploaded.url, at: Date.now() });
           out.badge = uploaded.url;
