@@ -248,7 +248,7 @@ rem 之后 start.cmd 会自动拉起这个只监听本机的代理
 | `forward.maxPerRun` | `5` | 每轮最多推送几条 |
 | `forward.maxPushAgeHours` | `6` | 超过这个小时数的推文不再补发（`0` 表示关闭） |
 | `forward.maxImages` | `6` | 单条最多发几张图 |
-| `forward.imageMode` | `auto` | 图片放哪：`inline` 内嵌进卡片 / `message` 单独发图片消息 / `auto` 素材库宽裕时内嵌、快满了自动改成单独发（推荐） |
+| `forward.imageMode` | `auto` | 图片放哪：`inline` 内嵌进卡片 / `message` 单独发图片消息 / `media` 图文同条（文字+首图一个气泡，纯文本） / `auto` 素材库宽裕时内嵌、快满了自动改成单独发（推荐） |
 | `forward.mediaInlineUntil` | `80` | `auto` 模式的切换线：素材库少于这个张数才内嵌 |
 | `forward.headerCacheHours` | `12` | 头像 / 徽章素材的缓存时长，过期后重新上传（防止素材被淘汰后链接失效） |
 | `forward.avatarCacheHours` | `168` | 头像/徽章的素材复用时长（头像基本不变，缓存久一点省配额） |
@@ -489,6 +489,7 @@ node src/main.js xprobe             # 只验证 X 侧
 | `auto`（默认） | 宽裕时内嵌，快满时自动降级 |
 | `inline` | 永远内嵌（撞满 100 张后会触发回收，老消息的图会失效） |
 | `message` | 永远单独发（图不会失效，但不是卡片风格） |
+| `media` | 图文同条：文字和第一张图放同一条消息，其余图接着发。不占素材配额，但**正文只能是纯文本**，没有标题/加粗/引用块 |
 
 素材库还有个坑：列表接口一页只返回 20 条、`offset/limit/page` 都不生效，
 所以“看不到的旧素材”只能靠反复回收慢慢排空（`media --clean`）。

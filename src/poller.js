@@ -101,6 +101,13 @@ export class Poller {
     return this.qq.wantInlineImages(acfg?.forward || this.cfg.forward || {});
   }
 
+  /** 实际生效的图片模式（把 auto 解析成 inline / message）。 */
+  effectiveImageMode(acfg) {
+    const mode = acfg?.forward?.imageMode || (acfg?.forward?.markdownImage ? 'inline' : 'message');
+    if (mode === 'auto') return this.qq?.lastInlineDecision === false ? 'message' : 'inline';
+    return mode;
+  }
+
   async buildReplyContext(displayTweet, acfg) {
     const parentId = displayTweet?.replyToStatusId;
     if (!parentId) return null;
@@ -333,6 +340,7 @@ export class Poller {
               sendImages: acfg.forward.sendImages !== false,
               style: acfg.forward.style || 'text',
               markdownImage: await this.wantInlineImages(acfg).catch(() => false),
+              imageMode: this.effectiveImageMode(acfg),
               quotePhotos: detail?.quote?.photos || [],
               header,
               photos,
@@ -501,6 +509,7 @@ export class Poller {
       sendImages: acfg.forward.sendImages !== false,
       style: acfg.forward.style || 'text',
       markdownImage: await this.wantInlineImages(acfg).catch(() => false),
+      imageMode: this.effectiveImageMode(acfg),
       quotePhotos: detail?.quote?.photos || [],
       header,
       photos,

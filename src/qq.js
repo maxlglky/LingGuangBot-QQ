@@ -267,11 +267,11 @@ export class QQClient {
   async wantInlineImages(forward = this.cfg.forward || {}) {
     const mode =
       forward.imageMode || (forward.markdownImage === true ? 'inline' : 'message');
-    if (mode === 'inline') return true;
-    if (mode === 'message') return false;
+    if (mode === 'inline') return (this.lastInlineDecision = true);
+    if (mode !== 'auto') return (this.lastInlineDecision = false);
     const total = await this.mediaTotal().catch(() => 0);
     const limit = forward.mediaInlineUntil ?? 80;
-    return total < limit;
+    return (this.lastInlineDecision = total < limit);
   }
 
   /** 读素材库当前张数（带缓存，避免每条推送都打一次列表接口）。 */
@@ -705,6 +705,49 @@ export class QQClient {
       } catch (err) {
         result.errors.push(`图文: ${err.message}`);
         // 失败退回纯文本
+      }
+    }
+
+    // 图文同条（imageMode=media）：文字和第一张图放进同一条图片消息里，
+    // 不占素材库配额，但正文只能是纯文本，卡片样式用不了。
+    if (opts.imageMode === 'media' && opts.sendImages !== false) {
+      const photos = [
+        ...(opts.photos && opts.photos.length ? opts.photos : imageUrls.map((url) => ({ url }))),
+        ...(opts.quotePhotos || []),
+      ].slice(0, opts.maxImages ?? 6);
+      if (photos.length) {
+        try {
+          const first = photos[0];
+          const local = await this.downloadImage(first.url);
+          const info = local
+            ? await this.uploadGroupImageBuffer(groupOpenid, local.buffer, local.name)
+            : await this.uploadGroupImage(groupOpenid, first.url);
+          await this.sendGroupMedia(groupOpenid, info, text, replyExtra);
+          result.text = true;
+          result.styleUsed = 'media';
+          result.images = 1;
+
+          let seq = opts.replyTo ? (opts.replyTo.seq ?? 1) + 1 : 0;
+          for (const photo of photos.slice(1)) {
+            const extra = !seq ? {} : seq > 5 ? null : { msg_id: opts.replyTo.msgId, msg_seq: seq };
+            if (extra === null) break;
+            if (seq) seq += 1;
+            try {
+              const l = await this.downloadImage(photo.url);
+              const fi = l
+                ? await this.uploadGroupImageBuffer(groupOpenid, l.buffer, l.name)
+                : await this.uploadGroupImage(groupOpenid, photo.url);
+              await this.sendGroupMedia(groupOpenid, fi, ' ', extra);
+              result.images += 1;
+            } catch (err) {
+              result.errors.push(`图片: ${err.message}`);
+            }
+          }
+          return result;
+        } catch (err) {
+          result.errors.push(`图文: ${err.message}`);
+          // 失败继续走卡片
+        }
       }
     }
 
