@@ -959,10 +959,17 @@ async function cmdGroups(args) {
   return 0;
 }
 
-/** 素材库状态：张数、超过多少天、本地缓存里有多少条已经过期。 */
-async function cmdMedia() {
+/** 素材库状态：张数、缓存过期情况；`--clean` 会把库回收到 mediaKeep 以下。 */
+async function cmdMedia(args = []) {
   const { cfg, qq } = await buildContext();
   await qq.loadMediaCache();
+  const keep = cfg.forward.mediaKeep ?? 70;
+
+  if (args.includes('--clean')) {
+    const deleted = await drainMedia(qq, keep);
+    console.log(`素材回收完成：共删除 ${deleted} 张旧素材（目标 ≤ ${keep} 张）`);
+  }
+
   const list = await qq.api('GET', '/v2/media-images');
   const total = Number(list?.total || 0);
   const images = list?.images || [];
@@ -981,10 +988,25 @@ async function cmdMedia() {
   const ttlMs = qq.mediaCacheTtlMs;
   const expired = entries.filter((e) => !ttlMs || Date.now() - Number(e.at || 0) > ttlMs).length;
   console.log(`本地缓存: ${entries.length} 条，其中已过期 ${expired} 条（过期的下次会自动重传）`);
-  if (total >= 95) {
-    console.log('提示: 素材接近 100 张上限，QQ 会开始淘汰最旧的图片，老消息里的图会失效。');
+  if (total >= 88) {
+    console.log(
+      '提示: 素材库快满了（上限 100 张）。可以运行 `node src/main.js media --clean` 回收旧素材。',
+    );
   }
   return 0;
+}
+
+/** 反复回收，直到库内张数降到 keep 以下（列表接口一次只给 20 条，得多跑几轮）。 */
+async function drainMedia(qq, keep, maxRounds = 10) {
+  let deleted = 0;
+  for (let round = 0; round < maxRounds; round += 1) {
+    const total = Number((await qq.api('GET', '/v2/media-images'))?.total || 0);
+    if (total <= keep) break;
+    const freed = await qq.pruneMediaIfNeeded({ force: true });
+    if (!freed) break;
+    deleted += freed;
+  }
+  return deleted;
 }
 
 function usage() {
@@ -996,7 +1018,8 @@ function usage() {
   node src/main.js once [--seed]     跑一轮（--seed 把现有推文标记为已读）
   node src/main.js once --dry-run    跑一轮但不发送
   node src/main.js xprobe            验证 X cookie 并打印每个账号最新推文
-  node src/main.js media             素材库状态（张数 / 缓存 / 清理阈值）
+  node src/main.js media             素材库状态（张数 / 缓存 / 回收阈值）
+  node src/main.js media --clean     回收素材到 mediaKeep 以下（图片又发不出去时用）
   node src/main.js send-test [--oldest] [--id <推文id>]
                                      把最新（或指定）一条推文试发到已开启的群
   node src/main.js send-tweet <推文链接> [--group <openid>]
@@ -1032,7 +1055,7 @@ try {
       code = await cmdXprobe();
       break;
     case 'media':
-      code = await cmdMedia();
+      code = await cmdMedia(rest);
       break;
     case 'groups':
       code = await cmdGroups(rest);

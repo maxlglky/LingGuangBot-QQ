@@ -283,7 +283,9 @@ export class QQClient {
       if (images.length <= keepNewest) return 0;
       // 只动“看得到的最旧那批”，最新的 keepNewest 条永远保留
       const deletable = images.slice(0, images.length - keepNewest);
-      const wantFree = force ? deletable.length : Math.max(1, total - keep);
+      // 目标是降到 keep 以下；配额爆掉时同样按这个目标回收，别把库删空
+      const wantFree = Math.max(0, total - keep);
+      if (!wantFree) return 0;
 
       const deletedUrls = new Set();
       let removed = 0;
