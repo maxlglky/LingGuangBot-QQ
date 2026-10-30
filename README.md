@@ -250,9 +250,9 @@ rem 之后 start.cmd 会自动拉起这个只监听本机的代理
 | `forward.maxImages` | `6` | 单条最多内嵌几张图 |
 | `forward.headerCacheHours` | `12` | 头像 / 徽章素材的缓存时长，过期后重新上传（防止素材被淘汰后链接失效） |
 | `forward.mediaCacheHours` | `6` | 图片素材缓存的有效期。超过就重新上传，避免复用已被 QQ 淘汰的链接（群里表现是图片一直「加载中」）。`0` = 每次重传 |
-| `forward.mediaPruneAt` | `95` | 素材库用量达到多少张时触发清理 |
-| `forward.mediaKeep` | `80` | 清理后保留多少张最近的素材 |
-| `forward.mediaPruneMinAgeHours` | `24` | 清理时只删「已经放了这么多小时」的旧图，绝不删刚发出去的 |
+| `forward.mediaPruneAt` | `88` | 素材库用量达到多少张时触发回收 |
+| `forward.mediaKeep` | `70` | 回收后想降到多少张以下 |
+| `forward.mediaPruneKeepNewest` | `4` | 回收时永远保留最新的几张，避免把刚发出去的图删掉 |
 | `forward.maxMarkdownChars` | `4000` | 单条 Markdown 上限 |
 | `forward.style` | `markdown` | `markdown` / `text` / `media` / `ark` |
 | `forward.markdownImage` | `true` | 图片是否内嵌进卡片 |
@@ -467,6 +467,19 @@ node src/main.js xprobe             # 只验证 X 侧
 **为什么正文行首要插零宽空格？** QQ 会把行首的 `#` 当标题、`>` 当引用，
 插一个不可见字符就能阻断语法，不影响阅读。
 
+**为什么图片要传素材、还会“消失”？** QQ 的 Markdown 只认自己的素材链接
+（`qqbot-media://`），所以每张图都要先传到「素材管理」。这个库是 **100 张硬上限**，
+而且列表接口一页只返回 20 条、`offset/limit/page` 都不生效 —— 也就是说
+**满了以后只能回收看得到的那 20 条**，剩下的既看不到也删不掉。
+所以本项目的策略是：
+
+1. 缓存带时效（`mediaCacheHours`），绝不长期复用可能已失效的链接；
+2. 用量到 `mediaPruneAt` 就回收旧素材，但保留最新 `mediaPruneKeepNewest` 张；
+3. 万一还是撞上 `40035007`，会自动回收一批再重传一次；
+4. 实在腾不出配额时，**只发文字，不挡住推送本身**。
+
+代价是：**历史消息里的图会在素材被回收后失效**，这是平台限制，无法绕过。
+
 ---
 
 ## FAQ / 排错
@@ -476,7 +489,8 @@ node src/main.js xprobe             # 只验证 X 侧
 | `X 拒绝了请求（401）` | cookie 过期，重新复制 `auth_token` |
 | `40034105 主动消息失败, 无权限` | 群主没开「主动推送消息」 |
 | 图片发不出来 | 检查代理是否可用；失败时会只发文字 |
-| 图片一直显示「加载中」/「加载失败」 | 该图片用的素材链接已被 QQ 淘汰。素材库上限 100 张，满了会静默删最旧的，删除后链接永久失效。升级到带 `mediaCacheHours` 的版本即可（缓存过期会自动重传），用 `node src/main.js media` 可以看素材库是否已经满了 |
+| 图片一直显示「加载中」/「加载失败」 | 该图片用的素材链接已被回收。素材库上限 100 张，删除后链接永久失效。升级到带 `mediaCacheHours` 的版本即可（缓存过期会自动重传），用 `node src/main.js media` 可以看素材库是否已经满了 |
+| 图片和头像突然全没了（日志里有 `40035007 markdown image quota exceeded`） | 素材库满 100 张了，`prepare` 直接拒绝。新版会在配额爆掉时自动回收旧素材再重传；临时想看库容就运行 `node src/main.js media` |
 | 老消息里的图突然不见了 | 同上，素材被淘汰后老消息里的图就没了，这是平台限制，无法恢复 |
 | 视频没发 | 超过 100MB 会自动降档；看日志里的 `视频: …` |
 | 重复推送 | 转推的转帖 id 与原推 id 已双向标记；若仍出现，检查 `state.json` 是否被并发写 |

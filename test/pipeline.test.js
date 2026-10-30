@@ -384,6 +384,97 @@ test('转推指令：能从 id / 链接里取出推文 id', () => {
   assert.equal(matchKeyword('/转贴 xaccount1 开', DEFAULT_COMMANDS.retweet), false);
 });
 
+test('素材回收：库满时删最旧的，但保留最新几张，并只清掉被删的缓存', async () => {
+  const qq = new QQClient(
+    { ...baseConfig(), forward: { mediaPruneAt: 88, mediaKeep: 70, mediaPruneKeepNewest: 4 } },
+    captureLogger(),
+  );
+  qq.mediaCacheFile = null;
+  qq.mediaCacheLoaded = true;
+
+  const now = Math.floor(Date.now() / 1000);
+  // 列表接口一页只给 20 条，按时间升序排（最后一条最新）
+  const images = Array.from({ length: 20 }, (_, i) => ({
+    image_id: `id${i}`,
+    url: `qqbot-media://image/v1/img${i}`,
+    created_at: String(now - (20 - i) * 60),
+  }));
+  const deleted = [];
+  qq.api = async (method, path) => {
+    if (method === 'GET') return { total: 100, images };
+    if (method === 'DELETE') {
+      deleted.push(path.split('/')[3]);
+      return {};
+    }
+    return {};
+  };
+
+  qq.mediaCache.set('gone', { url: 'qqbot-media://image/v1/img0', at: Date.now() });
+  qq.mediaCache.set('kept', { url: 'qqbot-media://image/v1/img19', at: Date.now() });
+
+  const freed = await qq.pruneMediaIfNeeded();
+  assert.equal(freed, 16, '只删看得到的 20 条里的 16 条');
+  assert.equal(deleted.length, 16);
+  assert.ok(!deleted.includes('id19'), '最新的一张不能删');
+  assert.ok(!deleted.includes('id18'), '最新的一张不能删');
+  assert.ok(deleted.includes('id0'), '最旧的先删');
+  assert.equal(qq.mediaCache.has('gone'), false, '被删掉的缓存要清掉');
+  assert.equal(qq.mediaCache.has('kept'), true, '没删的缓存要留着');
+});
+
+test('素材回收：配额报错 40035007 时自动回收后重传一次', async () => {
+  const qq = new QQClient(
+    { ...baseConfig(), forward: { mediaPruneAt: 88, mediaKeep: 70, mediaPruneKeepNewest: 4 } },
+    captureLogger(),
+  );
+  qq.mediaCacheFile = null;
+  qq.mediaCacheLoaded = true;
+
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      res.writeHead(200, { etag: '"etag"' });
+      res.end('');
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+
+  const now = Math.floor(Date.now() / 1000);
+  const images = Array.from({ length: 20 }, (_, i) => ({
+    image_id: `id${i}`,
+    url: `qqbot-media://image/v1/img${i}`,
+    created_at: String(now - (20 - i) * 60),
+  }));
+  let prepares = 0;
+  let deletes = 0;
+  qq.api = async (method, path) => {
+    if (method === 'GET') return { total: 100, images };
+    if (method === 'DELETE') {
+      deletes += 1;
+      return {};
+    }
+    if (path.endsWith('/prepare')) {
+      prepares += 1;
+      if (prepares === 1) {
+        const err = new Error('QQ API 400 [40035007] markdown image quota exceeded');
+        err.code = 40035007;
+        throw err;
+      }
+      return { presigned_url: `http://127.0.0.1:${port}/put`, upload_id: 'u1' };
+    }
+    if (path.endsWith('/complete')) return { url: 'qqbot-media://image/v1/fresh' };
+    return {};
+  };
+
+  const out = await qq.uploadMarkdownImage(Buffer.from('quota-test'), {});
+  assert.equal(out.url, 'qqbot-media://image/v1/fresh', '回收后应该重传成功');
+  assert.equal(prepares, 2, 'prepare 应该被调用两次');
+  assert.ok(deletes > 0, '重试前应该回收了旧素材');
+
+  await new Promise((r) => server.close(r));
+});
+
 test('素材缓存带有效期：过期后重新上传，不再引用已失效的链接', async () => {
   const server = createServer((req, res) => {
     req.resume();

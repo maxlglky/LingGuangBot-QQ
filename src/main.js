@@ -59,9 +59,9 @@ const DEFAULTS = {
     maxImages: 6,
     headerCacheHours: 12,
     mediaCacheHours: 6,
-    mediaPruneAt: 95,
-    mediaKeep: 80,
-    mediaPruneMinAgeHours: 24,
+    mediaPruneAt: 88,
+    mediaKeep: 70,
+    mediaPruneKeepNewest: 4,
     perMinute: 15,
     perDay: 200,
     timeZone: 'Asia/Shanghai',
@@ -969,8 +969,8 @@ async function cmdMedia() {
   console.log(`素材库: ${total} / 100 张（列表接口一页只返回 ${images.length} 条，且不支持翻页）`);
   const ttl = cfg.forward.mediaCacheHours ?? 6;
   console.log(
-    `素材缓存有效期: ${ttl}h   清理阈值: ${cfg.forward.mediaPruneAt ?? 95} 张` +
-      `（只删超过 ${cfg.forward.mediaPruneMinAgeHours ?? 24}h 的旧图）`,
+    `素材缓存有效期: ${ttl}h   回收阈值: ${cfg.forward.mediaPruneAt ?? 88} 张` +
+      `（回收时保留最新 ${cfg.forward.mediaPruneKeepNewest ?? 4} 张）`,
   );
   const ts = images.map((i) => Number(i.created_at || 0)).filter(Boolean).sort((a, b) => a - b);
   if (ts.length) {

@@ -215,7 +215,7 @@ export class QQClient {
       try {
         const local = await this.downloadImage(candidate);
         if (!local) continue;
-        const uploaded = await this.uploadMarkdownImage(local.buffer, { ...imageMeta(local), force: true });
+        const uploaded = await this.uploadMarkdownImage(local.buffer, imageMeta(local));
         this.headerCache.set(candidate, { url: uploaded.url, at: Date.now() });
         out.avatar = uploaded.url;
         break;
@@ -239,7 +239,6 @@ export class QQClient {
           const uploaded = await this.uploadMarkdownImage(buf, {
             contentType: 'image/png',
             fileName: 'verified.png',
-            force: true,
           });
           this.headerCache.set(key, { url: uploaded.url, at: Date.now() });
           out.badge = uploaded.url;
@@ -253,52 +252,71 @@ export class QQClient {
   }
 
   /**
-   * 素材管理有 100 张上限，满了 QQ 会自己淘汰最旧的。
-   * 注意：列表接口一页只给 20 条、不支持翻页，看不到真正最旧的那些，
-   * 所以这里只删「已经放了 mediaPruneMinAgeHours 小时以上」的，绝不删刚发的图。
-   * 每 6 小时最多检查一次。
+   * 素材管理是 100 张的硬上限：满了以后 `prepare` 直接报
+   * 40035007 markdown image quota exceeded，之后所有的图（连头像）都传不上去。
+   *
+   * 列表接口一页只返回 20 条、`offset/limit/page` 全都不生效，看不到真正最旧的那些，
+   * 所以只能“回收”看得到的这 20 条里的旧图：保留最新 mediaPruneKeepNewest 条，
+   * 其余按时间从旧到新删，腾出配额。
+   *
+   * @param {object} [opts]
+   * @param {boolean} [opts.force] 配额已经爆了时无视阈值、立刻回收
+   * @returns {Promise<number>} 实际删掉几张
    */
-  async pruneMediaIfNeeded(
-    threshold = this.cfg.forward?.mediaPruneAt ?? 95,
-    keep = this.cfg.forward?.mediaKeep ?? 80,
-    minAgeHours = this.cfg.forward?.mediaPruneMinAgeHours ?? 24,
-  ) {
-    if (this.mediaPrunedAt && Date.now() - this.mediaPrunedAt < 6 * 3600_000) return;
+  async pruneMediaIfNeeded({ force = false } = {}) {
+    const threshold = this.cfg.forward?.mediaPruneAt ?? 88;
+    const keep = this.cfg.forward?.mediaKeep ?? 70;
+    const keepNewest = Math.max(0, this.cfg.forward?.mediaPruneKeepNewest ?? 4);
+    // 平时 5 分钟最多查一次，避免每条推送都打一次列表接口；配额爆了则立刻回收
+    const cooldown = force ? 0 : 5 * 60_000;
+    if (this.mediaPrunedAt && Date.now() - this.mediaPrunedAt < cooldown) return 0;
     this.mediaPrunedAt = Date.now();
+
     try {
       const list = await this.api('GET', '/v2/media-images');
       const total = Number(list?.total || 0);
-      if (total < threshold) return;
-      const oldestAllowed = Date.now() - minAgeHours * 3600_000;
+      if (!force && total < threshold) return 0;
+
       const images = (list.images || [])
         .slice()
-        .sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0))
-        .filter((img) => Number(img.created_at || 0) * 1000 < oldestAllowed);
-      let remaining = total - keep;
+        .sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0));
+      if (images.length <= keepNewest) return 0;
+      // 只动“看得到的最旧那批”，最新的 keepNewest 条永远保留
+      const deletable = images.slice(0, images.length - keepNewest);
+      const wantFree = force ? deletable.length : Math.max(1, total - keep);
+
+      const deletedUrls = new Set();
       let removed = 0;
-      for (const img of images) {
-        if (remaining <= 0) break;
+      for (const img of deletable) {
+        if (removed >= wantFree) break;
         try {
           await this.api('DELETE', `/v2/media-images/${img.image_id}/delete`);
-          remaining -= 1;
+          if (img.url) deletedUrls.add(img.url);
           removed += 1;
-        } catch {
-          /* 单张删除失败跳过 */
+        } catch (err) {
+          this.logger.debug(`素材删除失败（${img.image_id}）: ${err.message}`);
         }
       }
-      if (!removed) {
-        this.logger.debug(`素材 ${total} 张，但没有超过 ${minAgeHours}h 的旧图可删，跳过`);
-        return;
+      if (!removed) return 0;
+
+      // 只丢掉被删掉的那几条缓存，其余的继续复用（别为了清缓存把整库重传一遍）
+      let cacheChanged = false;
+      for (const [key, value] of [...this.mediaCache]) {
+        if (deletedUrls.has(value?.url)) {
+          this.mediaCache.delete(key);
+          cacheChanged = true;
+        }
       }
-      // 删掉的可能是缓存里正在引用的那张，清掉缓存让下次重新上传
-      this.headerCache.clear();
-      this.mediaCache.clear();
-      await this.saveMediaCache().catch(() => {});
-      this.logger.info(
-        `素材已接近上限（${total}），已清理 ${removed} 张旧图；同时清空本地素材缓存`,
-      );
+      for (const [key, value] of [...this.headerCache]) {
+        if (deletedUrls.has(value?.url)) this.headerCache.delete(key);
+      }
+      if (cacheChanged) await this.saveMediaCache().catch(() => {});
+
+      this.logger.info(`素材回收：库内 ${total} 张，删了 ${removed} 张旧的，腾出配额`);
+      return removed;
     } catch (err) {
-      this.logger.warn(`素材清理失败: ${err.message}`);
+      this.logger.warn(`素材回收失败: ${err.message}`);
+      return 0;
     }
   }
 
@@ -399,6 +417,19 @@ export class QQClient {
 
     await this.pruneMediaIfNeeded();
 
+    try {
+      return await this.doUploadMarkdownImage(buffer, { md5, contentType, fileName });
+    } catch (err) {
+      // 40035007 = 素材配额爆了，回收一批旧素材后再试一次
+      if (Number(err?.code) !== 40035007) throw err;
+      const freed = await this.pruneMediaIfNeeded({ force: true });
+      if (!freed) throw err;
+      return this.doUploadMarkdownImage(buffer, { md5, contentType, fileName });
+    }
+  }
+
+  /** 真正走「prepare → PUT → complete」的那段，配额不足时会被重试一次。 */
+  async doUploadMarkdownImage(buffer, { md5, contentType, fileName }) {
     const sha1 = createHash('sha1').update(buffer).digest('hex');
     const prep = await this.api('POST', '/v2/media-images/prepare', {
       file_name: fileName,
