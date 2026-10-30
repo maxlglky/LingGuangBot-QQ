@@ -248,6 +248,9 @@ rem 之后 start.cmd 会自动拉起这个只监听本机的代理
 | `forward.maxPerRun` | `5` | 每轮最多推送几条 |
 | `forward.maxPushAgeHours` | `6` | 超过这个小时数的推文不再补发（`0` 表示关闭） |
 | `forward.maxImages` | `6` | 单条最多内嵌几张图 |
+| `forward.headerCacheHours` | `12` | 头像 / 徽章素材的缓存时长，过期后重新上传（防止素材被淘汰后链接失效） |
+| `forward.mediaPruneAt` | `95` | 素材库用量达到多少张时触发清理 |
+| `forward.mediaKeep` | `80` | 清理后保留多少张最近的素材 |
 | `forward.maxMarkdownChars` | `4000` | 单条 Markdown 上限 |
 | `forward.style` | `markdown` | `markdown` / `text` / `media` / `ark` |
 | `forward.markdownImage` | `true` | 图片是否内嵌进卡片 |

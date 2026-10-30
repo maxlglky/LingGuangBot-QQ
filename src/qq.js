@@ -191,16 +191,28 @@ export class QQClient {
       ...(avatarUrl ? [avatarUrl] : []),
     ].filter(Boolean);
 
+    const headerTtlMs = Math.max(0, (this.cfg.forward?.headerCacheHours ?? 2) * 3600_000);
+    const freshHeader = (key) => {
+      const hit = this.headerCache.get(key);
+      if (!hit) return null;
+      if (headerTtlMs && Date.now() - hit.at > headerTtlMs) {
+        this.headerCache.delete(key);
+        return null;
+      }
+      return hit.url;
+    };
+
     for (const candidate of candidates) {
-      if (this.headerCache.has(candidate)) {
-        out.avatar = this.headerCache.get(candidate);
+      const cachedAvatar = freshHeader(candidate);
+      if (cachedAvatar) {
+        out.avatar = cachedAvatar;
         break;
       }
       try {
         const local = await this.downloadImage(candidate);
         if (!local) continue;
-        const uploaded = await this.uploadMarkdownImage(local.buffer, imageMeta(local));
-        this.headerCache.set(candidate, uploaded.url);
+        const uploaded = await this.uploadMarkdownImage(local.buffer, { ...imageMeta(local), force: true });
+        this.headerCache.set(candidate, { url: uploaded.url, at: Date.now() });
         out.avatar = uploaded.url;
         break;
       } catch (err) {
@@ -214,16 +226,18 @@ export class QQClient {
 
     if (badgePath) {
       const key = `file:${badgePath}`;
-      if (this.headerCache.has(key)) {
-        out.badge = this.headerCache.get(key);
+      const cachedBadge = freshHeader(key);
+      if (cachedBadge) {
+        out.badge = cachedBadge;
       } else {
         try {
           const buf = await readFile(badgePath);
           const uploaded = await this.uploadMarkdownImage(buf, {
             contentType: 'image/png',
             fileName: 'verified.png',
+            force: true,
           });
-          this.headerCache.set(key, uploaded.url);
+          this.headerCache.set(key, { url: uploaded.url, at: Date.now() });
           out.badge = uploaded.url;
         } catch {
           /* 没有徽章素材就不显示 */
@@ -238,7 +252,10 @@ export class QQClient {
    * 素材管理有 100 张上限，接近上限时删掉最旧的（已发过的消息不受影响）。
    * 每 6 小时最多检查一次。
    */
-  async pruneMediaIfNeeded(threshold = 85, keep = 70) {
+  async pruneMediaIfNeeded(
+    threshold = this.cfg.forward?.mediaPruneAt ?? 95,
+    keep = this.cfg.forward?.mediaKeep ?? 80,
+  ) {
     if (this.mediaPrunedAt && Date.now() - this.mediaPrunedAt < 6 * 3600_000) return;
     this.mediaPrunedAt = Date.now();
     try {
@@ -351,11 +368,15 @@ export class QQClient {
    * 把图片上传到「素材管理」，返回 qqbot-media:// 引用（可在 Markdown 里直接用）。
    * 同一张图（md5 相同）在本进程内只上传一次。
    */
-  async uploadMarkdownImage(buffer, { contentType = 'image/jpeg', fileName = 'image.jpg' } = {}) {
+  async uploadMarkdownImage(
+    buffer,
+    { contentType = 'image/jpeg', fileName = 'image.jpg', force = false } = {},
+  ) {
     await this.loadMediaCache();
     const md5 = createHash('md5').update(buffer).digest('hex');
     const cached = this.mediaCache.get(md5);
-    if (cached) return { url: cached, previewUrl: null };
+    // force=true 时忽略缓存重新上传：缓存里的素材可能已被 QQ 淘汰，链接会失效
+    if (cached && !force) return { url: cached, previewUrl: null };
 
     await this.pruneMediaIfNeeded();
 

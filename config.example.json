@@ -17,6 +17,8 @@
   },
   "forward": {
     "intervalSec": 300,
+    "intervalJitterSec": 60,
+    "accountStaggerSec": 3,
     "style": "markdown",
     "markdownImage": true,
     "includeLink": true,
@@ -24,7 +26,10 @@
     "maxMarkdownChars": 4000,
     "maxPerRun": 5,
     "maxPushAgeHours": 6,
-    "maxImages": 4,
+    "maxImages": 6,
+    "headerCacheHours": 12,
+    "mediaPruneAt": 95,
+    "mediaKeep": 80,
     "perMinute": 15,
     "perDay": 200,
     "timeZone": "Asia/Shanghai"
