@@ -49,6 +49,14 @@ export async function fetchTweetDetail(id) {
     screenName: tweet.author?.screen_name || '',
     authorAvatar: tweet.author?.avatar_url || '',
     authorVerified: Boolean(tweet.author?.verification?.verified),
+    // 这条 id 本身如果是「转推」，这里是被谁转的
+    repostedBy: tweet.reposted_by
+      ? {
+          name: tweet.reposted_by.name || '',
+          screenName: tweet.reposted_by.screen_name || '',
+          avatarUrl: tweet.reposted_by.avatar_url || '',
+        }
+      : null,
     url: tweet.url || `https://x.com/i/status/${id}`,
     photos,
     videos,

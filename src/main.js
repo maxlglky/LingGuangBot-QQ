@@ -5,7 +5,14 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildArkCard, formatTweet, formatTweetMarkdown } from './format.js';
-import { DEFAULT_COMMANDS, extractCommandArg, matchKeyword, normalizeCommand, resolveAccount } from './commands.js';
+import {
+  DEFAULT_COMMANDS,
+  extractCommandArg,
+  matchKeyword,
+  normalizeCommand,
+  parseTweetId,
+  resolveAccount,
+} from './commands.js';
 import { fetchTweetDetail, fetchTweetMedia, resolveRepost } from './fx.js';
 import { GroupWatcher } from './gateway.js';
 import { request } from './http.js';
@@ -239,12 +246,104 @@ async function replyLatest({ cfg, qq, poller, store, logger, openid, msgId, acco
   }
 }
 
+/**
+ * 「/转推 <推文id>」：把指定 id 的推文立刻发到本会话。
+ * 不受订阅状态限制，也不需要这条推文是「新的」。
+ */
+async function replyTweet({ cfg, qq, poller, logger, openid, msgId, arg }) {
+  if (!msgId) return;
+
+  const id = parseTweetId(arg);
+  if (!id) {
+    await qq
+      .sendGroupReply(
+        openid,
+        '用法：/转推 <推文id>\n例：/转推 2115790539924918461\n推文 id 就是链接里 status/ 后面那串数字。',
+        msgId,
+        1,
+      )
+      .catch(() => {});
+    return;
+  }
+
+  try {
+    const detail = await fetchTweetDetail(id);
+    if (!detail) {
+      await qq
+        .sendGroupReply(openid, `没取到 id=${id} 的推文，可能已删除，或者 id 抄错了。`, msgId, 1)
+        .catch(() => {});
+      return;
+    }
+
+    const accounts = cfg.accounts || [];
+    if (!accounts.length) {
+      await qq.sendGroupReply(openid, 'config.json 里还没有配置任何账号。', msgId, 1).catch(() => {});
+      return;
+    }
+
+    const authorHandle = String(detail.screenName || '').toLowerCase();
+    const reposter = detail.repostedBy?.screenName || '';
+    // 转推时以「谁转的」为准：卡片抬头、头像、样式都跟着转发的人
+    const handle = (reposter || authorHandle).toLowerCase();
+    const known = accounts.find((a) => String(a.handle || '').toLowerCase() === handle);
+    // 账号没配过时，借用第一个账号的样式，但名字/头像用推文自己那一位
+    const account =
+      known ||
+      {
+        ...accounts[0],
+        key: handle || accounts[0].key,
+        displayName: (reposter ? detail.repostedBy.name : detail.author) || accounts[0].displayName,
+        avatarUrl:
+          (reposter ? detail.repostedBy.avatarUrl : detail.authorAvatar) || accounts[0].avatarUrl,
+      };
+
+    // 属于已配账号的推文：用账号自己的源拿原始对象，转推 / 回复的语义才完整
+    let tweet = null;
+    if (known) {
+      const collected = await poller.collectTweets(known).catch(() => []);
+      tweet =
+        collected.find(
+          ({ tweet: t }) => String(t.link || '').includes(id) || String(t.id || '').endsWith(id),
+        )?.tweet || null;
+    }
+    if (!tweet) {
+      tweet = {
+        id: detail.id,
+        text: detail.text,
+        link: detail.url,
+        // 转推时不知道「转帖时间」，留空就不会显示「转帖于 …」
+        published: !reposter && detail.createdAt ? new Date(detail.createdAt) : undefined,
+        images: (detail.photos || []).map((p) => p.url),
+        isReply: Boolean(detail.replyToStatusId),
+        isRetweet: Boolean(reposter),
+        title: reposter ? `RT by @${reposter}` : '',
+        replyTo: detail.replyTo || '',
+        replyToStatusId: detail.replyToStatusId || '',
+      };
+    }
+
+    const r = await poller.sendTweetToGroup(account, tweet, openid, {
+      replyTo: { msgId, seq: 1 },
+    });
+    if (r?.errors?.length) logger.warn(`/转推 部分失败: ${r.errors.join('; ')}`);
+    logger.info(`会话 ${openid} 手动转推 ${id}（${account.key}）`);
+  } catch (err) {
+    logger.warn(`手动转推失败: ${err.message}`);
+    try {
+      await qq.sendGroupReply(openid, `转推失败：${err.message}`, msgId, 1);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 /** 建群事件监听：入群只登记，@ 机器人发指令才开启推送。 */
 function createWatcher({ cfg, logger, store, qq, poller }) {
   const commands = cfg.commands || {};
   const enableWords = commands.enable || [];
   const disableWords = commands.disable || [];
   const latestWords = commands.latest || [];
+  const retweetWords = commands.retweet || [];
 
   return new GroupWatcher({
     cfg,
@@ -330,6 +429,21 @@ function createWatcher({ cfg, logger, store, qq, poller }) {
             logger.warn(`指令回复失败: ${err.message}`),
           );
         }
+        return;
+      }
+
+      // 「/转推 <推文id>」：立刻把这条推文发出来（不看订阅、不看新旧）
+      if (matchKeyword(msg.content, retweetWords)) {
+        logger.info(`收到指令 [${openid.slice(0, 8)}] ${JSON.stringify(msg.content)}`);
+        await replyTweet({
+          cfg,
+          qq,
+          poller,
+          logger,
+          openid,
+          msgId: msg.msgId,
+          arg: extractCommandArg(msg.content, retweetWords) || '',
+        });
         return;
       }
 

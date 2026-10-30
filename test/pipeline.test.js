@@ -11,6 +11,7 @@ import {
   extractCommandArg,
   matchKeyword,
   normalizeCommand,
+  parseTweetId,
   resolveAccount,
 } from '../src/commands.js';
 import { dedupeKey, toTweet } from '../src/tweet.js';
@@ -358,6 +359,29 @@ test('群只收到自己订阅的账号', () => {
     poller.groupsFor({ key: 'ami' }).map((g) => g.openid),
     ['B'],
   );
+});
+
+test('转推指令：能从 id / 链接里取出推文 id', () => {
+  assert.equal(parseTweetId('2115790539924918461'), '2115790539924918461');
+  assert.equal(
+    parseTweetId('https://x.com/yunachan_akb48/status/2115790539924918461?s=20'),
+    '2115790539924918461',
+  );
+  assert.equal(
+    parseTweetId('https://twitter.com/a/status/2115790539924918461'),
+    '2115790539924918461',
+  );
+  assert.equal(parseTweetId(''), '');
+  assert.equal(parseTweetId('转推'), '');
+  assert.equal(matchKeyword('/转推 2115790539924918461', DEFAULT_COMMANDS.retweet), true);
+  assert.equal(
+    extractCommandArg('/转推 2115790539924918461', DEFAULT_COMMANDS.retweet),
+    '2115790539924918461',
+  );
+  // 不能和「/最新」「/转贴」互相误判
+  assert.equal(matchKeyword('/转推 2115790539924918461', DEFAULT_COMMANDS.latest), false);
+  assert.equal(matchKeyword('/转推 2115790539924918461', DEFAULT_COMMANDS.enable), false);
+  assert.equal(matchKeyword('/转贴 xaccount1 开', DEFAULT_COMMANDS.retweet), false);
 });
 
 test('素材缓存带有效期：过期后重新上传，不再引用已失效的链接', async () => {

@@ -4,9 +4,22 @@ export const DEFAULT_COMMANDS = {
   enable: ['订阅', '订阅推文', '开推', '开启推送', '/订阅', '/rss on', 'rss on', 'lingguangbot-qq on', '/lingguangbot-qq on'],
   disable: ['退订', '取消订阅', '关推', '关闭推送', '/退订', '/rss off', 'rss off', 'lingguangbot-qq off', '/lingguangbot-qq off'],
   latest: ['最新', '最新推文', '看看推文', '推文', '拉取', 'latest', '/最新'],
+  retweet: ['转推', '立即转推', '/转推'],
   pullCount: 3,
   reply: true,
 };
+
+/**
+ * 从「推文 id / 推文链接 / 带 id 的一句话」里取出推文 id。
+ * 支持 `2115790539924918461`、`https://x.com/a/status/2115790539924918461?s=20` 这些写法。
+ */
+export function parseTweetId(input) {
+  const text = String(input || '');
+  const fromUrl = text.match(/(?:status|statuses)\/(\d{6,25})/i);
+  if (fromUrl) return fromUrl[1];
+  const bare = text.match(/(?<!\d)(\d{6,25})(?!\d)/);
+  return bare ? bare[1] : '';
+}
 
 export function normalizeCommand(text) {
   return String(text || '')

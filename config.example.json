@@ -52,6 +52,9 @@
     "latest": [
       "最新"
     ],
+    "retweet": [
+      "转推"
+    ],
     "reply": true
   },
   "accounts": [
