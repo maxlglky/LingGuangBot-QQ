@@ -257,7 +257,14 @@ export class QQClient {
           /* 单张删除失败跳过 */
         }
       }
-      this.logger.info(`素材已接近上限（${total}），已清理旧图，剩余约 ${keep} 张`);
+      // 删掉的可能是头像/图片缓存里正在引用的那张，清掉缓存让下次重新上传，
+      // 避免继续引用已失效的 qqbot-media 链接（表现是群里显示「加载失败」）
+      this.headerCache.clear();
+      this.mediaCache.clear();
+      await this.saveMediaCache().catch(() => {});
+      this.logger.info(
+        `素材已接近上限（${total}），已清理旧图，剩余约 ${keep} 张；同时清空本地素材缓存`,
+      );
     } catch (err) {
       this.logger.warn(`素材清理失败: ${err.message}`);
     }
