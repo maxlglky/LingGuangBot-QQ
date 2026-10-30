@@ -153,10 +153,11 @@ export class QQClient {
   }
 
   /** 发送群文本消息（msg_type=0）。 */
-  async sendGroupText(groupOpenid, content) {
+  async sendGroupText(groupOpenid, content, extra = {}) {
     return this.api('POST', this.targetPath(groupOpenid, 'messages'), {
       content,
       msg_type: 0,
+      ...extra,
     });
   }
 
@@ -530,7 +531,7 @@ export class QQClient {
   }
 
   /** 发送群富媒体消息（msg_type=7），content 会作为同一条消息里的文字显示。 */
-  async sendGroupMedia(groupOpenid, fileInfo, content = ' ') {
+  async sendGroupMedia(groupOpenid, fileInfo, content = ' ', extra = {}) {
     return this.api('POST', this.targetPath(groupOpenid, 'messages'), {
       content: content || ' ',
       msg_type: 7,
@@ -544,6 +545,10 @@ export class QQClient {
     if (wait > 0) await sleep(wait);
 
     const result = { text: false, images: 0, errors: [], markdown: false, ark: false };
+    // 被动回复（5 分钟内有效，不占主动消息配额）：带上 msg_id 与递增的 msg_seq
+    const replyExtra = opts.replyTo
+      ? { msg_id: opts.replyTo.msgId, msg_seq: opts.replyTo.seq ?? 1 }
+      : {};
 
     // 图文同条：把文字放进富媒体消息的 content 里
     if (opts.style === 'media' && imageUrls.length && opts.sendImages !== false) {
@@ -615,6 +620,7 @@ export class QQClient {
             repost: opts.repost || null,
             videoCount: opts.videos?.length || 0,
           }),
+          replyExtra,
         );
         result.text = true;
         result.markdown = true;
@@ -667,7 +673,7 @@ export class QQClient {
     }
 
     try {
-      await this.sendGroupText(groupOpenid, text);
+      await this.sendGroupText(groupOpenid, text, replyExtra);
       result.text = true;
     } catch (err) {
       result.errors.push(`文本: ${err.message}`);

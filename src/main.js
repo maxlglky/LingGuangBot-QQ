@@ -173,25 +173,34 @@ async function cmdDoctor() {
 }
 
 /** 「最新」指令：用被动回复把最近几条推文发出来（主动消息没权限时的兜底）。 */
-async function replyLatest({ cfg, qq, poller, logger, openid, msgId }) {
+async function replyLatest({ cfg, qq, logger, poller, openid, msgId }) {
   if (!msgId) return;
   const count = Math.max(1, Math.min(cfg.commands?.pullCount ?? 3, 5));
   try {
-    const collected = await poller.collectTweets();
-    const picks = collected.slice(-count);
+    // 汇总所有账号的最近推文，按时间排序后取最新的几条
+    const all = [];
+    for (const account of cfg.accounts || []) {
+      const collected = await poller.collectTweets(account).catch(() => []);
+      for (const item of collected) all.push({ account, tweet: item.tweet });
+    }
+    all.sort((a, b) => (a.tweet.published?.getTime() || 0) - (b.tweet.published?.getTime() || 0));
+    const picks = all.slice(-count).reverse();
+
     if (!picks.length) {
       await qq.sendGroupReply(openid, '暂时没抓到推文，稍后再试。', msgId, 1);
       return;
     }
+
     let seq = 1;
-    for (let i = 0; i < picks.length; i += 1) {
-      const tweet = picks[i].tweet;
-      const head = picks.length > 1 ? `（${i + 1}/${picks.length}）` : '';
-      const text = truncate(`${head}${formatTweet(tweet, cfg)}`, cfg.forward.maxChars ?? 1200);
-      await qq.sendGroupReply(openid, text, msgId, seq);
+    for (const { account, tweet } of picks) {
+      // 和日常推送走同一条渲染链路：卡片、头像、引用、回复上下文、翻译都一致
+      const r = await poller.sendTweetToGroup(account, tweet, openid, {
+        replyTo: { msgId, seq },
+      });
+      if (r?.errors?.length) logger.warn(`拉取最新推文部分失败: ${r.errors.join('; ')}`);
       seq += 1;
     }
-    logger.info(`群 ${openid} 被动拉取了 ${picks.length} 条推文`);
+    logger.info(`会话 ${openid} 被动拉取了 ${picks.length} 条推文（Markdown 卡片）`);
   } catch (err) {
     logger.warn(`拉取最新推文失败: ${err.message}`);
     try {

@@ -431,7 +431,7 @@ export class Poller {
   }
 
   /** 把单条推文按当前卡片样式发给指定群（订阅欢迎、手动补推用）。 */
-  async sendTweetToGroup(account, tweet, groupOpenid) {
+  async sendTweetToGroup(account, tweet, groupOpenid, options = {}) {
     const acfg = this.accountCfg(account);
     const statusId = (tweet.link || '').match(/status\/(\d+)/)?.[1] || tweet.id;
     const detail = await fetchTweetDetail(statusId).catch(() => null);
@@ -475,6 +475,7 @@ export class Poller {
       wantTranslate && detail?.quote?.id ? await this.translateTweet(acfg, detail.quote.id) : '';
 
     return this.qq.deliver(groupOpenid, text, displayTweet.images || [], {
+      replyTo: options.replyTo || null,
       sendImages: acfg.forward.sendImages !== false,
       style: acfg.forward.style || 'text',
       markdownImage: acfg.forward.markdownImage === true,
