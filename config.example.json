@@ -34,18 +34,26 @@
     "xCookie": "auth_token=你的auth_token; ct0=你的ct0"
   },
   "commands": {
-    "enable": ["订阅", "开推"],
-    "disable": ["退订", "关推"],
-    "latest": ["最新"],
+    "enable": [
+      "订阅",
+      "开推"
+    ],
+    "disable": [
+      "退订",
+      "关推"
+    ],
+    "latest": [
+      "最新"
+    ],
     "reply": true
   },
   "accounts": [
     {
-      "key": "yuna",
-      "handle": "yunachan_akb48",
-      "displayName": "秋山由奈",
+      "key": "xaccount1",
+      "handle": "example_account",
+      "displayName": "X账号1",
       "provider": "xcookie",
-      "userId": "1651920077669945346",
+      "userId": "0000000000000000000",
       "includeRetweets": true,
       "maxAgeHours": 24
     }
