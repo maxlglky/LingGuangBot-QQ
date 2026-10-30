@@ -723,12 +723,14 @@ export class QQClient {
 
         // 不走内嵌时，图片单独作为「图片消息」发出去：不占素材库配额，
         // 也就不会因为素材被回收而变成「加载失败」。
+        // 被动回复最多 5 条（卡片占 1 条），所以最多再跟 4 张图。
+        const passiveCap = opts.replyTo ? 4 : Number.POSITIVE_INFINITY;
         const mediaQueue =
           !wantInline && opts.sendImages !== false
             ? [
                 ...photos.slice(0, limit),
                 ...(opts.quotePhotos || []).slice(0, opts.maxQuoteImages ?? 2),
-              ]
+              ].slice(0, passiveCap)
             : [];
 
         await this.sendGroupMarkdown(
