@@ -286,44 +286,62 @@ export class QQClient {
   }
 
   /**
-   * 素材管理是 100 张的硬上限：满了以后 `prepare` 直接报
-   * 40035007 markdown image quota exceeded，之后所有的图（连头像）都传不上去。
+   * 取回整库素材（列表接口一页 20 条，要用 next_cursor 翻页）。
+   * 官方文档：`GET /v2/media-images?cursor=xxx`，按上传时间倒序，next_cursor 为空即末页。
+   */
+  async listAllMedia({ maxPages = 20 } = {}) {
+    const all = [];
+    let cursor = '';
+    for (let page = 0; page < maxPages; page += 1) {
+      const path = cursor
+        ? `/v2/media-images?cursor=${encodeURIComponent(cursor)}`
+        : '/v2/media-images';
+      const res = await this.api('GET', path);
+      const images = res?.images || [];
+      all.push(...images);
+      this.mediaTotalCache = { total: Number(res?.total || all.length), at: Date.now() };
+      cursor = res?.next_cursor || '';
+      if (!cursor || !images.length) break;
+    }
+    return all;
+  }
+
+  /**
+   * 素材回收。
    *
-   * 列表接口一页只返回 20 条、`offset/limit/page` 全都不生效，看不到真正最旧的那些，
-   * 所以只能“回收”看得到的这 20 条里的旧图：保留最新 mediaPruneKeepNewest 条，
-   * 其余按时间从旧到新删，腾出配额。
+   * 官方文档（素材管理）：
+   * - 单机器人上限 100 张，超了 prepare/complete 直接 40035007；
+   * - 列表接口一页 20 条，翻页要用 next_cursor；
+   * - 删除后**已发送的消息不受影响**（发送时平台已转存副本），只是引用链接不能再被新消息用。
+   *
+   * 所以：按创建时间从旧到新删，删到 mediaKeep 以下就停，最近发的图一张都不动。
    *
    * @param {object} [opts]
    * @param {boolean} [opts.force] 配额已经爆了时无视阈值、立刻回收
    * @returns {Promise<number>} 实际删掉几张
    */
   async pruneMediaIfNeeded({ force = false } = {}) {
-    const threshold = this.cfg.forward?.mediaPruneAt ?? 88;
-    const keep = this.cfg.forward?.mediaKeep ?? 70;
-    const keepNewest = Math.max(0, this.cfg.forward?.mediaPruneKeepNewest ?? 4);
+    const threshold = this.cfg.forward?.mediaPruneAt ?? 90;
+    const keep = this.cfg.forward?.mediaKeep ?? 60;
     // 平时 5 分钟最多查一次，避免每条推送都打一次列表接口；配额爆了则立刻回收
     const cooldown = force ? 0 : 5 * 60_000;
     if (this.mediaPrunedAt && Date.now() - this.mediaPrunedAt < cooldown) return 0;
     this.mediaPrunedAt = Date.now();
 
     try {
-      const list = await this.api('GET', '/v2/media-images');
-      const total = Number(list?.total || 0);
+      const total = await this.mediaTotal({ maxAgeMs: 0 });
       if (!force && total < threshold) return 0;
+      const wantFree = total - keep;
+      if (wantFree <= 0) return 0;
 
-      const images = (list.images || [])
+      const images = (await this.listAllMedia())
         .slice()
         .sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0));
-      if (images.length <= keepNewest) return 0;
-      // 只动“看得到的最旧那批”，最新的 keepNewest 条永远保留
-      const deletable = images.slice(0, images.length - keepNewest);
-      // 目标是降到 keep 以下；配额爆掉时同样按这个目标回收，别把库删空
-      const wantFree = Math.max(0, total - keep);
-      if (!wantFree) return 0;
+      if (!images.length) return 0;
 
       const deletedUrls = new Set();
       let removed = 0;
-      for (const img of deletable) {
+      for (const img of images) {
         if (removed >= wantFree) break;
         try {
           await this.api('DELETE', `/v2/media-images/${img.image_id}/delete`);
@@ -349,7 +367,7 @@ export class QQClient {
       }
       if (cacheChanged) await this.saveMediaCache().catch(() => {});
 
-      this.logger.info(`素材回收：库内 ${total} 张，删了 ${removed} 张旧的，腾出配额`);
+      this.logger.info(`素材回收：库内 ${total} 张，按时间从旧到新删了 ${removed} 张`);
       return removed;
     } catch (err) {
       this.logger.warn(`素材回收失败: ${err.message}`);

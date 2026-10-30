@@ -249,13 +249,12 @@ rem 之后 start.cmd 会自动拉起这个只监听本机的代理
 | `forward.maxPushAgeHours` | `6` | 超过这个小时数的推文不再补发（`0` 表示关闭） |
 | `forward.maxImages` | `6` | 单条最多发几张图 |
 | `forward.imageMode` | `auto` | 图片放哪：`inline` 内嵌进卡片 / `message` 单独发图片消息 / `media` 图文同条（文字+首图一个气泡，纯文本） / `auto` 素材库宽裕时内嵌、快满了自动改成单独发（推荐） |
-| `forward.mediaInlineUntil` | `80` | `auto` 模式的切换线：素材库少于这个张数才内嵌 |
+| `forward.mediaInlineUntil` | `92` | `auto` 模式的切换线：素材库少于这个张数才内嵌 |
 | `forward.headerCacheHours` | `12` | 头像 / 徽章素材的缓存时长，过期后重新上传（防止素材被淘汰后链接失效） |
 | `forward.avatarCacheHours` | `168` | 头像/徽章的素材复用时长（头像基本不变，缓存久一点省配额） |
 | `forward.mediaCacheHours` | `6` | 内嵌图片素材缓存的有效期。超过就重新上传，避免复用已被回收的链接（群里表现是图片一直「加载中」）。`0` = 每次重传 |
-| `forward.mediaPruneAt` | `88` | 素材库用量达到多少张时触发回收 |
-| `forward.mediaKeep` | `70` | 回收后想降到多少张以下 |
-| `forward.mediaPruneKeepNewest` | `4` | 回收时永远保留最新的几张，避免把刚发出去的图删掉 |
+| `forward.mediaPruneAt` | `90` | 素材库用量达到多少张时触发回收 |
+| `forward.mediaKeep` | `60` | 回收时删到多少张为止（从最旧的开始删） |
 | `forward.maxMarkdownChars` | `4000` | 单条 Markdown 上限 |
 | `forward.style` | `markdown` | `markdown` / `text` / `media` / `ark` |
 | `forward.markdownImage` | `false` | 老配置项，等价于 `imageMode: "inline"`，保留兼容 |
@@ -471,28 +470,35 @@ node src/main.js xprobe             # 只验证 X 侧
 **为什么正文行首要插零宽空格？** QQ 会把行首的 `#` 当标题、`>` 当引用，
 插一个不可见字符就能阻断语法，不影响阅读。
 
-**为什么图片要传素材、还会“消失”？** QQ 的 Markdown 只认自己的素材链接
-（`qqbot-media://`），直连 `pbs.twimg.com` 或者第三方图片代理在客户端里都加载不出来
-（实测过）。而这个素材库是 **100 张硬上限**，满了以后连头像都传不上去
-（`40035007 markdown image quota exceeded`）。
+**为什么图片要传素材？** 官方文档说 Markdown 里的图片可以直接用公网 URL
+（平台会下载转存），但**腾讯的服务器连不到 `pbs.twimg.com`** —— 实测：
+同一张 Markdown 里放腾讯 COS 的公共图能正常显示，放 X 图床的图（带不带参数都一样）
+就加载不出来。所以才要先把图传到「素材管理」，拿 `qqbot-media://` 引用。
 
-所以默认 `imageMode: "auto"`：
+素材库的关键限制（都来自[官方文档](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/material-management.html)）：
 
-- **素材库还宽裕（< `mediaInlineUntil`，默认 80 张）** → 图片内嵌在卡片里，就是你想要的样子；
-- **快满了** → 自动改成把图片作为「图片消息」跟在卡片后面，绝不硬塞到 `40035007` 把图全搞没；
-- 图片消息走群文件通道（`/v2/groups/{id}/files` + `msg_type=7`），不占素材库配额、不会失效。
+| 项目 | 限制 |
+| --- | --- |
+| 数量 | 单机器人 **100 张**，超了 `prepare` 直接 40035007 |
+| 单张大小 | ≤ 10MB，格式 png / jpeg / gif / webp |
+| 有效期 | **滑动过期**：每次被消息引用后顺延，连续 90 天没人引用才失效 |
+| 查询 | 一页 20 条，翻页用 **`cursor`**（`offset/limit/page` 都没用） |
+| 删除 | 删了只影响**新消息**能否再引用；**已发送的消息不受影响**（发送时平台已转存副本）✅ 已实测 |
 
-想要固定行为可以显式设 `imageMode`：
+所以回收策略很直接：到 `mediaPruneAt`（默认 90 张）就用 `cursor` 翻全库，
+**从最旧的开始删**，删到 `mediaKeep`（默认 60 张）为止 —— 最近发的图一张都不动，
+已发出去的图也不会因此消失。
+
+至于卡片里放不放图，`imageMode` 三种：
 
 | 值 | 效果 |
 | --- | --- |
-| `auto`（默认） | 宽裕时内嵌，快满时自动降级 |
-| `inline` | 永远内嵌（撞满 100 张后会触发回收，老消息的图会失效） |
-| `message` | 永远单独发（图不会失效，但不是卡片风格） |
-| `media` | 图文同条：文字和第一张图放同一条消息，其余图接着发。不占素材配额，但**正文只能是纯文本**，没有标题/加粗/引用块 |
+| `auto`（默认） | 素材库 < `mediaInlineUntil` 时内嵌；快满了自动降级成单独发（兜底，几乎不会触发） |
+| `inline` | 永远内嵌 |
+| `message` | 永远单独发图片消息（不占配额） |
+| `media` | 图文同条：文字 + 首图一条消息，其余图接着发。不占配额，但**正文只能是纯文本** |
 
-素材库还有个坑：列表接口一页只返回 20 条、`offset/limit/page` 都不生效，
-所以“看不到的旧素材”只能靠反复回收慢慢排空（`media --clean`）。
+> 想一次腾空素材库：`node src/main.js media --clean`。
 
 ---
 

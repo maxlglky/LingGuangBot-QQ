@@ -448,24 +448,32 @@ test('转推指令：能从 id / 链接里取出推文 id', () => {
   assert.equal(matchKeyword('/转贴 xaccount1 开', DEFAULT_COMMANDS.retweet), false);
 });
 
-test('素材回收：库满时删最旧的，但保留最新几张，并只清掉被删的缓存', async () => {
+test('素材回收：按 cursor 翻页取全库，从最旧的开始删到 mediaKeep', async () => {
   const qq = new QQClient(
-    { ...baseConfig(), forward: { mediaPruneAt: 88, mediaKeep: 70, mediaPruneKeepNewest: 4 } },
+    { ...baseConfig(), forward: { mediaPruneAt: 90, mediaKeep: 60 } },
     captureLogger(),
   );
   qq.mediaCacheFile = null;
   qq.mediaCacheLoaded = true;
 
   const now = Math.floor(Date.now() / 1000);
-  // 列表接口一页只给 20 条，按时间升序排（最后一条最新）
-  const images = Array.from({ length: 20 }, (_, i) => ({
-    image_id: `id${i}`,
-    url: `qqbot-media://image/v1/img${i}`,
+  // 两页：第 1 页 20 条（新），第 2 页 10 条（旧），total 70 → 要删 10 张（70-60）
+  const page1 = Array.from({ length: 20 }, (_, i) => ({
+    image_id: `new${i}`,
+    url: `qqbot-media://image/v1/new${i}`,
     created_at: String(now - (20 - i) * 60),
+  }));
+  const page2 = Array.from({ length: 10 }, (_, i) => ({
+    image_id: `old${i}`,
+    url: `qqbot-media://image/v1/old${i}`,
+    created_at: String(now - 86400 - (10 - i) * 60),
   }));
   const deleted = [];
   qq.api = async (method, path) => {
-    if (method === 'GET') return { total: 100, images };
+    if (method === 'GET') {
+      if (path.includes('cursor=')) return { total: 70, images: page2, next_cursor: '' };
+      return { total: 70, images: page1, next_cursor: 'CURSOR2' };
+    }
     if (method === 'DELETE') {
       deleted.push(path.split('/')[3]);
       return {};
@@ -473,22 +481,21 @@ test('素材回收：库满时删最旧的，但保留最新几张，并只清�
     return {};
   };
 
-  qq.mediaCache.set('gone', { url: 'qqbot-media://image/v1/img0', at: Date.now() });
-  qq.mediaCache.set('kept', { url: 'qqbot-media://image/v1/img19', at: Date.now() });
+  qq.mediaCache.set('gone', { url: 'qqbot-media://image/v1/old0', at: Date.now() });
+  qq.mediaCache.set('kept', { url: 'qqbot-media://image/v1/new19', at: Date.now() });
 
-  const freed = await qq.pruneMediaIfNeeded();
-  assert.equal(freed, 16, '只删看得到的 20 条里的 16 条');
-  assert.equal(deleted.length, 16);
-  assert.ok(!deleted.includes('id19'), '最新的一张不能删');
-  assert.ok(!deleted.includes('id18'), '最新的一张不能删');
-  assert.ok(deleted.includes('id0'), '最旧的先删');
+  const freed = await qq.pruneMediaIfNeeded({ force: true });
+  assert.equal(freed, 10, '70 张要删到 60 张');
+  assert.equal(deleted.length, 10);
+  assert.ok(deleted.includes('old0'), '最旧的先删');
+  assert.ok(!deleted.includes('new19'), '最新的不能被删');
   assert.equal(qq.mediaCache.has('gone'), false, '被删掉的缓存要清掉');
   assert.equal(qq.mediaCache.has('kept'), true, '没删的缓存要留着');
 });
 
 test('素材回收：配额报错 40035007 时自动回收后重传一次', async () => {
   const qq = new QQClient(
-    { ...baseConfig(), forward: { mediaPruneAt: 88, mediaKeep: 70, mediaPruneKeepNewest: 4 } },
+    { ...baseConfig(), forward: { mediaPruneAt: 90, mediaKeep: 60 } },
     captureLogger(),
   );
   qq.mediaCacheFile = null;
@@ -513,7 +520,7 @@ test('素材回收：配额报错 40035007 时自动回收后重传一次', asyn
   let prepares = 0;
   let deletes = 0;
   qq.api = async (method, path) => {
-    if (method === 'GET') return { total: 100, images };
+    if (method === 'GET') return { total: 100, images, next_cursor: '' };
     if (method === 'DELETE') {
       deletes += 1;
       return {};

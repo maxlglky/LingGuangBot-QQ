@@ -61,13 +61,12 @@ const DEFAULTS = {
     //            message = 图单独发（不占配额，图不会失效）
     //            auto = 素材库还宽裕就内嵌，快满了自动降级成单独发（默认）
     imageMode: 'auto',
-    mediaInlineUntil: 80,
+    mediaInlineUntil: 92,
     headerCacheHours: 12,
     avatarCacheHours: 168,
     mediaCacheHours: 6,
-    mediaPruneAt: 88,
-    mediaKeep: 70,
-    mediaPruneKeepNewest: 4,
+    mediaPruneAt: 90,
+    mediaKeep: 60,
     perMinute: 15,
     perDay: 200,
     timeZone: 'Asia/Shanghai',
@@ -969,24 +968,24 @@ async function cmdGroups(args) {
 async function cmdMedia(args = []) {
   const { cfg, qq } = await buildContext();
   await qq.loadMediaCache();
-  const keep = cfg.forward.mediaKeep ?? 70;
+  const keep = cfg.forward.mediaKeep ?? 60;
 
   if (args.includes('--clean')) {
     const deleted = await drainMedia(qq, keep);
     console.log(`素材回收完成：共删除 ${deleted} 张旧素材（目标 ≤ ${keep} 张）`);
   }
 
-  const list = await qq.api('GET', '/v2/media-images');
-  const total = Number(list?.total || 0);
-  const images = list?.images || [];
-  console.log(`素材库: ${total} / 100 张（列表接口一页只返回 ${images.length} 条，且不支持翻页）`);
+  const images = await qq.listAllMedia().catch(() => []);
+  const total = Number(qq.mediaTotalCache?.total || images.length);
+  console.log(`素材库: ${total} / 100 张（cursor 翻页取到 ${images.length} 条）`);
   const ttl = cfg.forward.mediaCacheHours ?? 6;
+  const pruneThreshold = cfg.forward.mediaPruneAt ?? 90;
   console.log(
-    `素材缓存有效期: ${ttl}h   回收阈值: ${cfg.forward.mediaPruneAt ?? 88} 张` +
-      `（回收时保留最新 ${cfg.forward.mediaPruneKeepNewest ?? 4} 张）`,
+    `素材缓存有效期: ${ttl}h   回收阈值: ${pruneThreshold} 张` +
+      `（回收时从最旧的开始删，删到 ${keep} 张为止；已发消息的图不受影响）`,
   );
   const mode = cfg.forward.imageMode || (cfg.forward.markdownImage ? 'inline' : 'message');
-  const until = cfg.forward.mediaInlineUntil ?? 80;
+  const until = cfg.forward.mediaInlineUntil ?? 92;
   console.log(
     `图片模式: ${mode}` +
       (mode === 'auto'
@@ -998,13 +997,13 @@ async function cmdMedia(args = []) {
   const ts = images.map((i) => Number(i.created_at || 0)).filter(Boolean).sort((a, b) => a - b);
   if (ts.length) {
     const fmt = (s) => new Date(s * 1000).toLocaleString('zh-CN', { timeZone: cfg.forward.timeZone });
-    console.log(`可见素材: ${fmt(ts[0])} ～ ${fmt(ts[ts.length - 1])}`);
+    console.log(`库内素材: ${fmt(ts[0])} ～ ${fmt(ts[ts.length - 1])}（共 ${ts.length} 条）`);
   }
   const entries = [...qq.mediaCache.values()];
   const ttlMs = qq.mediaCacheTtlMs;
   const expired = entries.filter((e) => !ttlMs || Date.now() - Number(e.at || 0) > ttlMs).length;
   console.log(`本地缓存: ${entries.length} 条，其中已过期 ${expired} 条（过期的下次会自动重传）`);
-  if (total >= 88) {
+  if (total >= 90) {
     console.log(
       '提示: 素材库快满了（上限 100 张）。可以运行 `node src/main.js media --clean` 回收旧素材。',
     );
@@ -1012,11 +1011,11 @@ async function cmdMedia(args = []) {
   return 0;
 }
 
-/** 反复回收，直到库内张数降到 keep 以下（列表接口一次只给 20 条，得多跑几轮）。 */
+/** 反复回收，直到库内张数降到 keep 以下。 */
 async function drainMedia(qq, keep, maxRounds = 10) {
   let deleted = 0;
   for (let round = 0; round < maxRounds; round += 1) {
-    const total = Number((await qq.api('GET', '/v2/media-images'))?.total || 0);
+    const total = await qq.mediaTotal({ maxAgeMs: 0 }).catch(() => 0);
     if (total <= keep) break;
     const freed = await qq.pruneMediaIfNeeded({ force: true });
     if (!freed) break;
