@@ -1,6 +1,6 @@
 # LingGuangBot-QQ（凌光姬-QQ）
 
-> 把 X（Twitter）账号的推文自动搬到 QQ 群 / QQ 私聊，长得像 QQ 自带的推文卡片。
+> 把 X（Twitter）账号的新推文自动转发到 QQ 群或 QQ 私聊，成品是一张近似 QQ 原生的推文卡片。
 
 <p align="left">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue.svg">
@@ -10,13 +10,14 @@
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg">
 </p>
 
-关注某个账号，但不想一直盯着 X？LingGuangBot-QQ 会在 5 分钟内把新推文转进你的 QQ 群：
-头像、蓝 V、正文、配图、引用、转推、视频、时间、原帖链接，一样不少。
+想第一时间看到某个账号的更新，又不想一直刷 X？把它交给 LingGuangBot-QQ：
+默认每 5 分钟检查一次，有新推就发到你的群或私聊，头像、蓝 V、正文、配图、引用、转推、视频、
+时间、原帖链接都能带上。
 
-- **零依赖**：只用 Node.js 内置模块，clone 下来就能跑，不需要 `npm install`
-- **零第三方服务**：用你自己账号的 cookie 直连 X 的 GraphQL，不需要 RSS 服务、不需要付费 API
-- **会听指令**：群成员可以 `/订阅`、`/退订`、`/翻译 开`、`/回复 xaccount1 关`……
-- **群聊和私聊都支持**
+- **零依赖**：只用 Node.js 内置模块，clone 下来直接跑，不需要 `npm install`
+- **零第三方服务**：用自己账号的 cookie 直连 X，不需要 RSS 服务、不需要付费 API
+- **会听指令**：`/订阅`、`/退订`、`/翻译 开`、`/回复 <账号> 关` 都在聊天里完成
+- **群聊、私聊同一套逻辑**
 
 ---
 
@@ -47,13 +48,15 @@
 
 ## 效果
 
+一次转推的卡片长这样（省略了图片链接）：
+
 ```
 ## **⇄ X账号A 已转帖**
 > 转帖于 2026-10-28 14:38
 
 # ![头像] **X账号A** ![认证]
 
-这是示例推文的正文内容，实际内容是日文原文或中文译文。
+这是示例推文的正文内容。
 
 这里可能是多行文本，例如时间、地点等。
 
@@ -69,47 +72,52 @@
 2026-10-28 20:06｜[查看原帖 ↗](…)
 ```
 
-层级约定：主推账号名是 `#`（最大 + 加粗）、转推横幅与引用作者是 `##`、正文用 `>` 缩进表示「引用的内容」。
+层级约定：主推账号名用 `#`（最大字号 + 加粗），转推横幅和引用作者用 `##`，
+被引用的内容用 `>` 缩进；页脚时间是**推文本身的发布时间**，和 X 页面上一致。
 
 ---
 
 ## 部署
 
+有两条路：照下面的步骤手动来，或者把[提示词](#用-ai-agent-部署)丢给 AI Agent 让它代劳。
+
 ### 前置条件
 
 | 需要 | 说明 |
 | --- | --- |
-| Node.js **22+** | <https://nodejs.org/>，装 LTS 即可 |
+| Node.js **22+** | <https://nodejs.org/>，装 LTS 版即可 |
 | QQ 机器人 | 在 [q.qq.com](https://q.qq.com/) 创建，拿到 `AppID` / `AppSecret` |
-| 能访问 X 的网络 | 国内需自备代理（下文用 `127.0.0.1:17899` 举例） |
-| X 账号 cookie | 建议用小号，见[下一节](#拿-x-cookie) |
+| 能访问 X 的网络 | 国内需自备代理（下文以 `127.0.0.1:17899` 为例） |
+| X 账号 cookie | 建议用小号，获取方式见[下文](#拿-x-cookie) |
+| 「单聊」能力（可选） | 想在私聊里用，需要机器人后台开通该能力 |
 
-> 机器人能力：群里要能「被 @」并能发消息。首次上线前，群主还需在手机 QQ 里给机器人打开
-> 「**主动推送消息**」权限，否则会报 `40034105 主动消息失败, 无权限`。
+> 群里使用前，群主还要在手机 QQ 里给机器人打开「**主动推送消息**」权限，
+> 否则发送会报 `40034105 主动消息失败, 无权限`。
 
 ### 五步跑起来
 
 ```bash
 # 1. 拿到代码
-git clone <repo-url> LingGuangBot-QQ && cd LingGuangBot-QQ
+git clone https://github.com/maxlglky/LingGuangBot-QQ.git
+cd LingGuangBot-QQ
 
 # 2. 生成配置
 cp config.example.json config.json      # Windows: copy config.example.json config.json
 
-# 3. 填两处内容（用编辑器打开 config.json）
+# 3. 填三处内容（用编辑器打开 config.json）
 #    qq.appId / qq.appSecret  ->  QQ 机器人后台的凭据
 #    net.xCookie              ->  你的 X cookie（见下节）
-#    net.proxy                ->  你的代理地址，直连可留空
+#    net.proxy                ->  代理地址，直连可留空
 
 # 4. 自检
 node src/main.js doctor        # 凭据 / 推文源 / 会话名单
 node src/main.js xprobe        # 打印每个账号最新的 3 条推文
 
 # 5. 常驻
-node src/main.js run           # 或 Windows 双击 start.cmd
+node src/main.js run           # Windows 也可以直接双击 start.cmd
 ```
 
-看到类似输出就成功了：
+自检正常时输出大致如下：
 
 ```
 [1/4] 检查 QQ 凭据 ... OK
@@ -119,14 +127,15 @@ node src/main.js run           # 或 Windows 双击 start.cmd
 开始轮询 1 个账号，间隔 300s（随机抖动 0~60s）
 ```
 
-然后把机器人拉进群，在群里 **@ 机器人** 发 `/订阅 <账号key>`，它就会先推一条该账号的最新推文作为确认。
+然后把机器人拉进群，**@ 机器人** 发 `/订阅 <账号key>`。它会先推一条该账号的最新推文，
+既是确认订阅成功，也顺便让你看看卡片效果。
 
 ### 拿 X cookie
 
 1. 浏览器登录 <https://x.com>（建议小号）
 2. `F12` → **Application** → **Cookies** → `https://x.com`
-3. 复制 **`auth_token`** 的值，顺手复制 **`ct0`**（更稳）
-4. 填成一行：
+3. 复制 **`auth_token`**，顺手把 **`ct0`** 也复制上（更稳）
+4. 拼成一行填进配置：
 
 ```json
 "net": { "xCookie": "auth_token=xxxxxxxx; ct0=yyyyyyyy" }
@@ -145,29 +154,30 @@ queryId: UserTweets=… UserByScreenName=…
   2026-10-28T13:37:00.000Z  https://x.com/…
 ```
 
-> cookie 会过期（几周~几个月）。过期后日志会出现 `X 拒绝了请求（401）`，重新复制一次即可。
+> cookie 会过期（几周到几个月不等）。过期后日志会出现 `X 拒绝了请求（401）`，
+> 重新复制一次即可，其他配置不用动。
 
 ### 常驻与开机自启
 
 | 方式 | 说明 |
 | --- | --- |
-| `node src/main.js run` | 一直占着终端，`Ctrl+C` 停止 |
-| `start.cmd`（Windows） | 带窗口，关窗即停；node 崩溃 5 秒后自动重启 |
-| `stop.cmd`（Windows） | 按 PID 停止，并写 `.stop` 标记防止被自动重启拉起 |
-| `autostart.vbs` | 静默启动；丢进「启动」文件夹即可登录自启 |
+| `node src/main.js run` | 前台运行，占着终端，`Ctrl+C` 停止 |
+| `start.cmd`（Windows） | 带窗口运行，关窗即停；node 崩溃后 5 秒自动重启 |
+| `stop.cmd`（Windows） | 按 PID 停止，并写入 `.stop` 标记，避免被自动重启拉起 |
+| `autostart.vbs` | 静默启动，放进「启动」文件夹即可登录自启 |
 
-用本地代理下载 X 媒体（可选）：
+如果要用本地代理下载 X 媒体：
 
 ```bat
 set CLASH_EXE=C:\path\to\clash.exe
 node scripts\prepare-local-proxy.mjs C:\path\to\profile.yml 17899
-rem 之后 start.cmd 会自动拉起这个「只监听本机」的代理
+rem 之后 start.cmd 会自动拉起这个只监听本机的代理
 ```
 
 ### 用 AI Agent 部署
 
-不想手动折腾？把下面**整段**复制给有终端权限的 AI Agent（Claude Code / Codex / Cursor 等），
-它会自己 clone、问你凭据、自检并启动：
+不想自己敲命令？把下面**整段**复制给有终端权限的 AI Agent（Claude Code / Codex / Cursor 等），
+它会自己 clone、向你索取凭据、自检并启动：
 
 ```text
 请帮我部署 LingGuangBot-QQ —— 一个用 Node.js 写的「X 推文转发到 QQ 群/私聊」的自托管服务。
@@ -202,23 +212,23 @@ rem 之后 start.cmd 会自动拉起这个「只监听本机」的代理
 - 不要修改 src/ 下的业务代码，除非是为了修复明显的环境兼容问题，改动前先说明。
 ```
 
-> 提示：Agent 拿到凭据后建议你自己核对一遍 `config.json`；跑通后记得把 `config.json` 从任何备份/同步目录里排除。
+> Agent 拿到凭据后，建议你自己再核对一遍 `config.json`；跑通后记得把它从任何备份或同步目录里排除。
 
 ### 上线检查清单
 
 - [ ] `node src/main.js doctor` 四项全绿
 - [ ] `node src/main.js xprobe` 能拿到最新推文
-- [ ] 群里 `/订阅` 有回复，且收到一条最新推文
+- [ ] 群里 `/订阅` 有回复，并且收到了一条最新推文
 - [ ] 群主已开启「主动推送消息」
 - [ ] 私聊发 `/订阅` 也有回复（需要机器人后台开通「单聊」能力）
-- [ ] 日志 `logs/run-日期.log` 里每 5 分钟有「本轮结束」记录
+- [ ] 日志 `logs/run-日期.log` 里每 5 分钟有一条「本轮结束」记录
 - [ ] 重启一次服务，历史推文不会被重复推送（`state.json` 记着已读）
 
 ---
 
 ## 配置说明
 
-`config.json`（参考 `config.example.json`）：
+`config.json` 的结构参考 `config.example.json`：
 
 | 字段 | 默认 | 说明 |
 | --- | --- | --- |
@@ -226,34 +236,34 @@ rem 之后 start.cmd 会自动拉起这个「只监听本机」的代理
 | `stateFile` | `state.json` | 运行状态：会话、已读、开关、健康数据 |
 | `qq.appId` / `qq.appSecret` | — | QQ 机器人凭据 |
 | `qq.apiBase` | `https://api.bot.qq.com` | OpenAPI 地址 |
-| `qq.tokenBase` | `https://bots.qq.com` | 换 access_token 的地址 |
-| `net.proxy` | — | 拉 X / 下载媒体用的代理；直连留空 |
+| `qq.tokenBase` | `https://bots.qq.com` | 换取 access_token 的地址 |
+| `net.proxy` | — | 拉取 X 和下载媒体的代理；直连留空 |
 | `net.xCookie` | — | `auth_token=…; ct0=…` |
 | `x.maxAgeHours` | `24` | 只处理这么多小时内的推文 |
-| `x.includeReplies` | 按账号配置 | 账号级「回复」总闸（示例里为 `true`） |
-| `x.includeRetweets` | 按账号配置 | 账号级「转推」总闸（示例里为 `true`） |
+| `x.includeReplies` | 按账号配置 | 账号级「回复」总闸（示例中为 `true`） |
+| `x.includeRetweets` | 按账号配置 | 账号级「转推」总闸（示例中为 `true`） |
 | `forward.intervalSec` | `300` | 基础轮询间隔 |
-| `forward.intervalJitterSec` | `60` | 每轮额外随机 `+0~N` 秒，降低风控概率 |
-| `forward.accountStaggerSec` | `3` | 同一轮里账号之间随机错开 |
-| `forward.maxPerRun` | `5` | 每轮最多推几条 |
-| `forward.maxPushAgeHours` | `6` | 超过这个小时数的推文不再补发（`0` 关闭） |
+| `forward.intervalJitterSec` | `60` | 每轮额外随机增加 `0~N` 秒，降低风控概率 |
+| `forward.accountStaggerSec` | `3` | 同一轮内账号之间随机错开 |
+| `forward.maxPerRun` | `5` | 每轮最多推送几条 |
+| `forward.maxPushAgeHours` | `6` | 超过这个小时数的推文不再补发（`0` 表示关闭） |
 | `forward.maxImages` | `6` | 单条最多内嵌几张图 |
 | `forward.maxMarkdownChars` | `4000` | 单条 Markdown 上限 |
 | `forward.style` | `markdown` | `markdown` / `text` / `media` / `ark` |
-| `forward.markdownImage` | `true` | 图片内嵌进卡片 |
-| `forward.perMinute` / `perDay` | `15` / `200` | 每会话发送频率限制 |
-| `forward.timeZone` | `Asia/Shanghai` | 卡片时间用的时区 |
-| `accounts[]` | — | 账号表，见下 |
+| `forward.markdownImage` | `true` | 图片是否内嵌进卡片 |
+| `forward.perMinute` / `perDay` | `15` / `200` | 每个会话的发送频率限制 |
+| `forward.timeZone` | `Asia/Shanghai` | 卡片时间使用的时区 |
+| `accounts[]` | — | 账号列表，见下 |
 
-单个账号：
+单个账号的配置：
 
 ```jsonc
 {
-  "key": "xaccount1",                    // 群里 /订阅 xaccount1
+  "key": "xaccount1",                    // 群里用 /订阅 xaccount1
   "handle": "example_account",
   "displayName": "X账号1",
-  "provider": "xcookie",                // 目前只有 xcookie / file(调试)
-  "userId": "0000000000000000000",      // 数字 ID，留空会自动查
+  "provider": "xcookie",                // 目前有 xcookie / file(调试用)
+  "userId": "0000000000000000000",      // 数字 ID，留空会自动查询
   "includeReplies": true,
   "includeRetweets": true,
   "maxAgeHours": 24
@@ -264,29 +274,29 @@ rem 之后 start.cmd 会自动拉起这个「只监听本机」的代理
 
 ## 群聊与私聊
 
-同一套指令、同一套订阅逻辑，群聊和私聊的区别只在「要不要 @」和「权限」：
+群聊和私聊共用同一套指令和订阅逻辑，区别只有两点：要不要 @，以及权限限制。
 
 - **群聊**：@ 机器人发指令；群主需要开启「主动推送消息」权限
-- **私聊**：直接给机器人发消息，不用 @；没有「主动推送消息」这个限制
+- **私聊**：直接给机器人发消息，不用 @；没有「主动推送消息」这个概念
 
 指令（群里 @ 机器人，私聊直接发）：
 
 | 指令 | 作用 |
 | --- | --- |
 | `/订阅` | 查看本会话订阅状态 |
-| `/订阅 <账号>` | 订阅并立刻推一条该账号最新推文 |
+| `/订阅 <账号>` | 订阅，并立刻推一条该账号的最新推文 |
 | `/退订 <账号>` | 取消订阅 |
 | `/最新` | 重发最近缓存的推文 |
-| `/翻译 开` / `/翻译 关` | 是否使用 X 自带的中文翻译（正文 + 引用一起翻） |
+| `/翻译 开` / `/翻译 关` | 是否使用 X 自带的中文翻译（正文和引用一起翻） |
 | `/回复 <账号> 开\|关` | 是否转发该账号的「回复」 |
 | `/转贴 <账号> 开\|关` | 是否转发该账号的「转贴」 |
 
 补充说明：
 
-- 机器人被拉进群**只登记、不推送**，必须发 `/订阅` 才开始；
-- 订阅时「回复」「转贴」默认开启，之后可以单独关；
-- 开关都是**按会话**存的，群 A 关了不影响群 B；
-- 机器人对**私聊**消息不用 @ 就会响应，细节见下一节。
+- 机器人被拉进群时**只登记、不推送**，必须发 `/订阅` 才会开始；
+- 订阅时「回复」「转贴」默认开启，之后可以单独关掉；
+- 所有开关都**按会话**保存，A 群关了不影响 B 群；
+- 私聊消息不用 @ 也会响应，细节见下一节。
 
 ### 私聊（C2C）
 
@@ -306,12 +316,13 @@ rem 之后 start.cmd 会自动拉起这个「只监听本机」的代理
 | 发送接口 | `/v2/groups/{id}/messages` | `/v2/users/{id}/messages` |
 | 回复措辞 | 「发到本群」 | 「发到这里」 |
 
-**注意**
+**注意事项**
 
-- 私聊会话会出现在 `node src/main.js groups` 列表里，前缀是 `c2c:`；
-- 私聊的订阅关系、翻译开关、回复/转贴开关都**独立保存**，不和群共享；
+- 私聊会话会出现在 `node src/main.js groups` 的列表里，前缀是 `c2c:`；
+- 私聊的订阅关系、翻译开关、回复 / 转贴开关都**独立保存**，不与群共享；
 - 私聊推送同样受 `forward.perMinute` / `forward.perDay` 限制；
-- 私聊完全没回应时，先看日志里有没有 `C2C_MESSAGE_CREATE`：没有就是平台没推事件过来（通常是没有「单聊」能力），有事件但发送失败则是权限/密钥问题。
+- 私聊完全没回应时，先看日志里有没有 `C2C_MESSAGE_CREATE`：
+  没有说明平台没把事件推过来（通常是没有「单聊」能力）；有事件但发送失败，则是权限或密钥问题。
 
 ---
 
@@ -325,11 +336,11 @@ node src/main.js once --dry-run    # 跑一轮但只打印，不发送
 node src/main.js once --seed       # 把现有推文全部标记为已读
 node src/main.js status            # 健康状态：轮次 / 最后成功 / 连续失败
 node src/main.js xprobe            # 验证 X cookie，打印最新推文
-node src/main.js groups            # 看已登记会话与订阅关系
+node src/main.js groups            # 查看已登记会话与订阅关系
 node src/main.js groups disable <openid>   # 关掉某个会话的推送
 node src/main.js watch             # 只监听事件，自动登记机器人所在的群
 
-# 手动试发（测试样式、排查群权限）
+# 手动试发（调样式、排查群权限）
 node src/main.js send-test --account <key> --id <推文id> --group <openid>
 node src/main.js send-tweet <推文链接> [--group <openid>]
 ```
@@ -342,8 +353,8 @@ node src/main.js send-tweet <推文链接> [--group <openid>]
 
 ```
 src/
-├─ main.js      CLI 入口 + 指令处理（订阅/退订/翻译/回复/转贴）
-├─ poller.js    轮询调度：拉取 → 过滤 → 去重 → 逐群投递
+├─ main.js      CLI 入口 + 指令处理（订阅 / 退订 / 翻译 / 回复 / 转贴）
+├─ poller.js    轮询调度：拉取 → 过滤 → 去重 → 逐会话投递
 ├─ xgraphql.js  X 客户端：cookie、queryId 自动刷新、UserTweets、翻译
 ├─ tweet.js     推文对象规范化、去重键、行首 @ 剥离
 ├─ qq.js        QQ OpenAPI：token / 发送 / 素材上传 / 分片上传 / 媒体
@@ -380,11 +391,12 @@ Gateway(WS)                    Poller                       QQ OpenAPI
     │                                                            └ 视频(分片)
 ```
 
-关键点：
+几个关键点：
 
-1. **每个账号每轮只拉一次**，产物在内存里复用给所有会话，避免重复请求 X；
-2. **哪些内容能推**有三层闸门：账号级（`includeReplies/Retweets`）→ 会话级（`itemFlags`）→ 时间窗（`maxAgeHours` / `maxPushAgeHours`）；
-3. **失败不阻塞**：单个会话发送失败只记 `部分失败`，不影响其他会话；翻译失败回落原文。
+1. **每个账号每轮只拉一次**，结果在内存里复用给所有会话，避免重复请求 X；
+2. **能不能推**要过三层闸门：账号级（`includeReplies/Retweets`）→ 会话级（`itemFlags`）
+   → 时间窗（`maxAgeHours` / `maxPushAgeHours`）；
+3. **失败不阻塞**：某个会话发送失败只记一条 `部分失败`，不影响其他会话；翻译失败则回落原文。
 
 ### 想改某个地方
 
@@ -393,7 +405,7 @@ Gateway(WS)                    Poller                       QQ OpenAPI
 | 卡片样式（字号、间距、字段顺序） | `src/format.js` 的 `formatTweetMarkdown` |
 | 新增一个指令 | `src/main.js` 的 `onMessage`（先 `normalizeCommand`，再分支） |
 | 换数据源 | 新增 `src/xxx.js` 导出 `fetchXxx`，在 `src/poller.js` 的 `fetchRaw` 里加 `case`，输出同样的 item 结构即可 |
-| 调整过滤/去重 | `src/poller.js` 的 `tickAccount` |
+| 调整过滤 / 去重 | `src/poller.js` 的 `tickAccount` |
 | 会话级开关 | `src/store.js`（`setItemFlag` / `getItemFlags` 是现成模板） |
 | 发送行为（限频、媒体） | `src/qq.js` 的 `deliver` |
 
@@ -423,26 +435,29 @@ node src/main.js once --dry-run     # 真跑一轮但只打印，改样式时最
 node src/main.js xprobe             # 只验证 X 侧
 ```
 
-- 单测用 `provider: "file"` + 本地 JSON 推文源，不碰网络；
-- 改样式时不要往群里发，先 `--dry-run` 看 markdown，再 `send-test --group <小群>` 验证渲染；
-- X 改版导致 `queryId` 失效时，程序会自动重新抓取并写入 `state.json.xgraphql.json`，日志会打印 `已刷新 X 的 GraphQL queryId`。
+- 单测使用 `provider: "file"` + 本地 JSON 推文源，不碰网络；
+- 调样式时先 `--dry-run` 看 Markdown，再用 `send-test --group <小群>` 看实际渲染，别直接发大群；
+- X 改版导致 `queryId` 失效时，程序会自动重新抓取并写入 `state.json.xgraphql.json`，
+  日志会打印 `已刷新 X 的 GraphQL queryId`。
 
 ---
 
 ## 设计取舍
 
-**为什么用 cookie 抓 X，而不是 RSS / 第三方 API？**
+**为什么用 cookie 抓 X，而不是 RSS 或第三方 API？**
 
 | 方案 | 延迟 | 成本 | 问题 |
 | --- | --- | --- | --- |
-| RSS（rss.app 等） | 不可控，实测出现过 **17 小时** | 免费 | 收录延迟、回填旧推 |
+| RSS（rss.app 等） | 不可控，实测出现过 **17 小时** | 免费 | 收录延迟、会回填旧推 |
 | SocialData / twitterapi.io | 秒级 | 按条计费，实测约 **$3.6/天** | 免费额度很快耗尽（402） |
 | 公共 RSSHub 实例 | — | — | Twitter 路由已全部关闭（404/503） |
-| **X cookie + GraphQL（本方案）** | ≈ 轮询间隔 | 免费 | cookie 会过期，需要小号 |
+| **X cookie + GraphQL（本方案）** | ≈ 轮询间隔 | 免费 | cookie 会过期，建议用小号 |
 
-**为什么卡片里没有视频？** QQ 的 Markdown 不支持视频，所以视频作为独立消息发送，卡片里只给一行提示。
+**为什么卡片里没有视频？** QQ 的 Markdown 不支持视频，所以视频单独作为消息发送，
+卡片里只留一行提示。
 
-**为什么正文行首要插零宽空格？** QQ 会把行首 `#` 当标题、`>` 当引用，插一个不可见字符即可阻断语法。
+**为什么正文行首要插零宽空格？** QQ 会把行首的 `#` 当标题、`>` 当引用，
+插一个不可见字符就能阻断语法，不影响阅读。
 
 ---
 
@@ -452,11 +467,11 @@ node src/main.js xprobe             # 只验证 X 侧
 | --- | --- |
 | `X 拒绝了请求（401）` | cookie 过期，重新复制 `auth_token` |
 | `40034105 主动消息失败, 无权限` | 群主没开「主动推送消息」 |
-| 图片发不出来 | 检查代理是否可用；失败会只发文字 |
-| 视频没发 | 超过 100MB 会自动降档；看日志 `视频: …` |
+| 图片发不出来 | 检查代理是否可用；失败时会只发文字 |
+| 视频没发 | 超过 100MB 会自动降档；看日志里的 `视频: …` |
 | 重复推送 | 转推的转帖 id 与原推 id 已双向标记；若仍出现，检查 `state.json` 是否被并发写 |
 | `/订阅` 没反应 | 看日志有没有 `收到指令`；没有则是网关事件没进来（intents / 机器人能力） |
-| 私聊发指令没反应 | 机器人后台没开「单聊」能力；看日志里有没有 `C2C_MESSAGE_CREATE` |
+| 私聊发指令没反应 | 机器人后台没开「单聊」能力；看日志有没有 `C2C_MESSAGE_CREATE` |
 | 服务好像停了 | `node src/main.js status` 看「上次轮询」是否在 10 分钟内 |
 | `Cannot access 'norm' before initialization` | 旧版本的已知 bug，更新到最新代码 |
 | 日志找不到 | `logs/run-YYYY-MM-DD.log`，按天分文件 |
@@ -469,10 +484,9 @@ node src/main.js xprobe             # 只验证 X 侧
 > 例如「用登录 cookie 抓 X」属于非官方手段，卡片样式也只能近似 QQ 原生卡片；
 > 如果你的需求可以用官方 API 或 Webhook 满足，请优先选择官方方案。
 
-
 - 本项目是个人自用的小工具，**与 X、腾讯均无关联**；
 - 请自行确认使用方式符合 [X 服务条款](https://x.com/tos) 与 [QQ 机器人规范](https://q.qq.com/wiki/)；
-- 抓取内容仅建议用于个人备份、小范围交流，不要用于商业分发；
+- 抓取内容建议仅用于个人备份和小范围交流，不要用于商业分发；
 - 使用小号、低频轮询、随机抖动都能降低风控概率，但**无法保证不会被限制**，请自行承担风险。
 
 ---
