@@ -249,8 +249,10 @@ rem 之后 start.cmd 会自动拉起这个只监听本机的代理
 | `forward.maxPushAgeHours` | `6` | 超过这个小时数的推文不再补发（`0` 表示关闭） |
 | `forward.maxImages` | `6` | 单条最多内嵌几张图 |
 | `forward.headerCacheHours` | `12` | 头像 / 徽章素材的缓存时长，过期后重新上传（防止素材被淘汰后链接失效） |
+| `forward.mediaCacheHours` | `6` | 图片素材缓存的有效期。超过就重新上传，避免复用已被 QQ 淘汰的链接（群里表现是图片一直「加载中」）。`0` = 每次重传 |
 | `forward.mediaPruneAt` | `95` | 素材库用量达到多少张时触发清理 |
 | `forward.mediaKeep` | `80` | 清理后保留多少张最近的素材 |
+| `forward.mediaPruneMinAgeHours` | `24` | 清理时只删「已经放了这么多小时」的旧图，绝不删刚发出去的 |
 | `forward.maxMarkdownChars` | `4000` | 单条 Markdown 上限 |
 | `forward.style` | `markdown` | `markdown` / `text` / `media` / `ark` |
 | `forward.markdownImage` | `true` | 图片是否内嵌进卡片 |
@@ -338,6 +340,7 @@ node src/main.js once              # 跑一轮
 node src/main.js once --dry-run    # 跑一轮但只打印，不发送
 node src/main.js once --seed       # 把现有推文全部标记为已读
 node src/main.js status            # 健康状态：轮次 / 最后成功 / 连续失败
+node src/main.js media             # 素材库状态：张数 / 缓存是否过期 / 清理阈值
 node src/main.js xprobe            # 验证 X cookie，打印最新推文
 node src/main.js groups            # 查看已登记会话与订阅关系
 node src/main.js groups disable <openid>   # 关掉某个会话的推送
@@ -471,6 +474,8 @@ node src/main.js xprobe             # 只验证 X 侧
 | `X 拒绝了请求（401）` | cookie 过期，重新复制 `auth_token` |
 | `40034105 主动消息失败, 无权限` | 群主没开「主动推送消息」 |
 | 图片发不出来 | 检查代理是否可用；失败时会只发文字 |
+| 图片一直显示「加载中」/「加载失败」 | 该图片用的素材链接已被 QQ 淘汰。素材库上限 100 张，满了会静默删最旧的，删除后链接永久失效。升级到带 `mediaCacheHours` 的版本即可（缓存过期会自动重传），用 `node src/main.js media` 可以看素材库是否已经满了 |
+| 老消息里的图突然不见了 | 同上，素材被淘汰后老消息里的图就没了，这是平台限制，无法恢复 |
 | 视频没发 | 超过 100MB 会自动降档；看日志里的 `视频: …` |
 | 重复推送 | 转推的转帖 id 与原推 id 已双向标记；若仍出现，检查 `state.json` 是否被并发写 |
 | `/订阅` 没反应 | 看日志有没有 `收到指令`；没有则是网关事件没进来（intents / 机器人能力） |

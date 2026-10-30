@@ -51,8 +51,10 @@ const DEFAULTS = {
     sendImages: true,
     maxImages: 6,
     headerCacheHours: 12,
+    mediaCacheHours: 6,
     mediaPruneAt: 95,
     mediaKeep: 80,
+    mediaPruneMinAgeHours: 24,
     perMinute: 15,
     perDay: 200,
     timeZone: 'Asia/Shanghai',
@@ -843,6 +845,34 @@ async function cmdGroups(args) {
   return 0;
 }
 
+/** 素材库状态：张数、超过多少天、本地缓存里有多少条已经过期。 */
+async function cmdMedia() {
+  const { cfg, qq } = await buildContext();
+  await qq.loadMediaCache();
+  const list = await qq.api('GET', '/v2/media-images');
+  const total = Number(list?.total || 0);
+  const images = list?.images || [];
+  console.log(`素材库: ${total} / 100 张（列表接口一页只返回 ${images.length} 条，且不支持翻页）`);
+  const ttl = cfg.forward.mediaCacheHours ?? 6;
+  console.log(
+    `素材缓存有效期: ${ttl}h   清理阈值: ${cfg.forward.mediaPruneAt ?? 95} 张` +
+      `（只删超过 ${cfg.forward.mediaPruneMinAgeHours ?? 24}h 的旧图）`,
+  );
+  const ts = images.map((i) => Number(i.created_at || 0)).filter(Boolean).sort((a, b) => a - b);
+  if (ts.length) {
+    const fmt = (s) => new Date(s * 1000).toLocaleString('zh-CN', { timeZone: cfg.forward.timeZone });
+    console.log(`可见素材: ${fmt(ts[0])} ～ ${fmt(ts[ts.length - 1])}`);
+  }
+  const entries = [...qq.mediaCache.values()];
+  const ttlMs = qq.mediaCacheTtlMs;
+  const expired = entries.filter((e) => !ttlMs || Date.now() - Number(e.at || 0) > ttlMs).length;
+  console.log(`本地缓存: ${entries.length} 条，其中已过期 ${expired} 条（过期的下次会自动重传）`);
+  if (total >= 95) {
+    console.log('提示: 素材接近 100 张上限，QQ 会开始淘汰最旧的图片，老消息里的图会失效。');
+  }
+  return 0;
+}
+
 function usage() {
   console.log(`LingGuangBot-QQ（凌光姬-QQ） — 把 X 账号的推文转发到 QQ 群
 
@@ -852,6 +882,7 @@ function usage() {
   node src/main.js once [--seed]     跑一轮（--seed 把现有推文标记为已读）
   node src/main.js once --dry-run    跑一轮但不发送
   node src/main.js xprobe            验证 X cookie 并打印每个账号最新推文
+  node src/main.js media             素材库状态（张数 / 缓存 / 清理阈值）
   node src/main.js send-test [--oldest] [--id <推文id>]
                                      把最新（或指定）一条推文试发到已开启的群
   node src/main.js send-tweet <推文链接> [--group <openid>]
@@ -885,6 +916,9 @@ try {
       break;
     case 'xprobe':
       code = await cmdXprobe();
+      break;
+    case 'media':
+      code = await cmdMedia();
       break;
     case 'groups':
       code = await cmdGroups(rest);

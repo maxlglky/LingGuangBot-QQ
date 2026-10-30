@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -357,4 +358,65 @@ test('群只收到自己订阅的账号', () => {
     poller.groupsFor({ key: 'ami' }).map((g) => g.openid),
     ['B'],
   );
+});
+
+test('素材缓存带有效期：过期后重新上传，不再引用已失效的链接', async () => {
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      res.writeHead(200, { etag: '"etag"' });
+      res.end('');
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+
+  let uploaded = 0;
+  const stubApi = async (method, path) => {
+    if (path === '/v2/media-images') return { total: 1, images: [] };
+    if (path.endsWith('/prepare')) {
+      return { presigned_url: `http://127.0.0.1:${port}/put`, upload_id: 'u1' };
+    }
+    if (path.endsWith('/complete')) {
+      uploaded += 1;
+      return { url: `qqbot-media://image/v1/test${uploaded}` };
+    }
+    return {};
+  };
+
+  const qq = new QQClient({ ...baseConfig(), forward: { mediaCacheHours: 6 } }, captureLogger());
+  qq.mediaCacheFile = null;
+  qq.api = stubApi;
+
+  const buf = Buffer.from('same-image-bytes');
+  const md5 = createHash('md5').update(buf).digest('hex');
+  const first = await qq.uploadMarkdownImage(buf, {});
+  const again = await qq.uploadMarkdownImage(buf, {});
+  assert.equal(again.url, first.url, '有效期内应命中缓存');
+  assert.equal(uploaded, 1);
+
+  // 缓存过期（等价于素材被 QQ 淘汰）：必须重新上传，而不是继续用旧链接
+  qq.mediaCache.get(md5).at = Date.now() - 7 * 3600_000;
+  const third = await qq.uploadMarkdownImage(buf, {});
+  assert.notEqual(third.url, first.url, '过期后必须重新上传');
+  assert.equal(uploaded, 2);
+
+  // mediaCacheHours: 0 表示完全不复用缓存
+  qq.mediaCacheTtlMs = 0;
+  await qq.uploadMarkdownImage(buf, {});
+  assert.equal(uploaded, 3);
+
+  // 老格式（纯字符串、没有时间戳）的缓存一律当作已过期
+  const dir = await mkdtemp(join(tmpdir(), 'lgq-media-'));
+  const mediaFile = join(dir, 'state.media.json');
+  await writeFile(mediaFile, JSON.stringify({ [md5]: 'qqbot-media://image/v1/legacy' }), 'utf8');
+  const legacy = new QQClient({ ...baseConfig(), forward: { mediaCacheHours: 6 } }, captureLogger());
+  legacy.mediaCacheFile = mediaFile;
+  legacy.api = stubApi;
+  const before = uploaded;
+  const after = await legacy.uploadMarkdownImage(buf, {});
+  assert.notEqual(after.url, 'qqbot-media://image/v1/legacy', '老格式缓存必须重传');
+  assert.equal(uploaded, before + 1);
+
+  await new Promise((r) => server.close(r));
 });

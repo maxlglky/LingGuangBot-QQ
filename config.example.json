@@ -28,8 +28,10 @@
     "maxPushAgeHours": 6,
     "maxImages": 6,
     "headerCacheHours": 12,
+    "mediaCacheHours": 6,
     "mediaPruneAt": 95,
     "mediaKeep": 80,
+    "mediaPruneMinAgeHours": 24,
     "perMinute": 15,
     "perDay": 200,
     "timeZone": "Asia/Shanghai"

@@ -71,6 +71,10 @@ export class QQClient {
     this.mediaCacheFile = cfg.statePath
       ? String(cfg.statePath).replace(/\.json$/i, '') + '.media.json'
       : null;
+    // 素材缓存有效期：QQ 的素材库上限 100 张，超出会自动淘汰最旧的，
+    // 被淘汰的 qqbot-media 链接就永久失效（群里表现是「加载中」/「加载失败」）。
+    // 所以缓存不能永久有效，超过这个时长的缓存一律重新上传。0 = 不复用缓存。
+    this.mediaCacheTtlMs = Math.max(0, Number(cfg.forward?.mediaCacheHours ?? 6) * 3600_000);
     this.mediaCacheLoaded = false;
   }
 
@@ -249,12 +253,15 @@ export class QQClient {
   }
 
   /**
-   * 素材管理有 100 张上限，接近上限时删掉最旧的（已发过的消息不受影响）。
+   * 素材管理有 100 张上限，满了 QQ 会自己淘汰最旧的。
+   * 注意：列表接口一页只给 20 条、不支持翻页，看不到真正最旧的那些，
+   * 所以这里只删「已经放了 mediaPruneMinAgeHours 小时以上」的，绝不删刚发的图。
    * 每 6 小时最多检查一次。
    */
   async pruneMediaIfNeeded(
     threshold = this.cfg.forward?.mediaPruneAt ?? 95,
     keep = this.cfg.forward?.mediaKeep ?? 80,
+    minAgeHours = this.cfg.forward?.mediaPruneMinAgeHours ?? 24,
   ) {
     if (this.mediaPrunedAt && Date.now() - this.mediaPrunedAt < 6 * 3600_000) return;
     this.mediaPrunedAt = Date.now();
@@ -262,26 +269,33 @@ export class QQClient {
       const list = await this.api('GET', '/v2/media-images');
       const total = Number(list?.total || 0);
       if (total < threshold) return;
+      const oldestAllowed = Date.now() - minAgeHours * 3600_000;
       const images = (list.images || [])
         .slice()
-        .sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0));
+        .sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0))
+        .filter((img) => Number(img.created_at || 0) * 1000 < oldestAllowed);
       let remaining = total - keep;
+      let removed = 0;
       for (const img of images) {
         if (remaining <= 0) break;
         try {
           await this.api('DELETE', `/v2/media-images/${img.image_id}/delete`);
           remaining -= 1;
+          removed += 1;
         } catch {
           /* 单张删除失败跳过 */
         }
       }
-      // 删掉的可能是头像/图片缓存里正在引用的那张，清掉缓存让下次重新上传，
-      // 避免继续引用已失效的 qqbot-media 链接（表现是群里显示「加载失败」）
+      if (!removed) {
+        this.logger.debug(`素材 ${total} 张，但没有超过 ${minAgeHours}h 的旧图可删，跳过`);
+        return;
+      }
+      // 删掉的可能是缓存里正在引用的那张，清掉缓存让下次重新上传
       this.headerCache.clear();
       this.mediaCache.clear();
       await this.saveMediaCache().catch(() => {});
       this.logger.info(
-        `素材已接近上限（${total}），已清理旧图，剩余约 ${keep} 张；同时清空本地素材缓存`,
+        `素材已接近上限（${total}），已清理 ${removed} 张旧图；同时清空本地素材缓存`,
       );
     } catch (err) {
       this.logger.warn(`素材清理失败: ${err.message}`);
@@ -375,8 +389,13 @@ export class QQClient {
     await this.loadMediaCache();
     const md5 = createHash('md5').update(buffer).digest('hex');
     const cached = this.mediaCache.get(md5);
-    // force=true 时忽略缓存重新上传：缓存里的素材可能已被 QQ 淘汰，链接会失效
-    if (cached && !force) return { url: cached, previewUrl: null };
+    // force=true 时忽略缓存重新上传（头像/徽章用）。
+    // 缓存带时效：过期的链接可能已经被 QQ 淘汰，继续用就是「加载中」。
+    if (cached && !force) {
+      const fresh = this.mediaCacheTtlMs > 0 && Date.now() - Number(cached.at || 0) <= this.mediaCacheTtlMs;
+      if (fresh) return { url: cached.url, previewUrl: cached.previewUrl || null };
+      this.mediaCache.delete(md5);
+    }
 
     await this.pruneMediaIfNeeded();
 
@@ -409,9 +428,23 @@ export class QQClient {
     });
     const url = done?.url;
     if (!url) throw new Error('素材上传 complete 未返回 url');
-    this.mediaCache.set(md5, url);
+    this.mediaCache.set(md5, {
+      url,
+      previewUrl: done?.preview_url || null,
+      at: Date.now(),
+    });
+    this.trimMediaCache();
     await this.saveMediaCache();
     return { url, previewUrl: done?.preview_url || null };
+  }
+
+  /** 缓存别无限增长：超过 300 条就丢掉最旧的。 */
+  trimMediaCache(max = 300) {
+    if (this.mediaCache.size <= max) return;
+    const entries = [...this.mediaCache.entries()].sort(
+      (a, b) => Number(a[1]?.at || 0) - Number(b[1]?.at || 0),
+    );
+    for (const [key] of entries.slice(0, this.mediaCache.size - max)) this.mediaCache.delete(key);
   }
 
   /** 素材图片缓存（QQ 单机器人上限 100 张，避免重复上传）。 */
@@ -421,7 +454,18 @@ export class QQClient {
     if (!this.mediaCacheFile) return;
     try {
       const data = JSON.parse(await readFile(this.mediaCacheFile, 'utf8'));
-      for (const [key, value] of Object.entries(data)) this.mediaCache.set(key, value);
+      for (const [key, value] of Object.entries(data)) {
+        // 老格式是纯字符串（没有时间戳）：不知道什么时候传的，一律当过期，下次重传
+        if (typeof value === 'string') {
+          this.mediaCache.set(key, { url: value, previewUrl: null, at: 0 });
+        } else if (value?.url) {
+          this.mediaCache.set(key, {
+            url: value.url,
+            previewUrl: value.previewUrl || null,
+            at: Number(value.at || 0),
+          });
+        }
+      }
     } catch {
       /* 首次运行没有缓存文件 */
     }
