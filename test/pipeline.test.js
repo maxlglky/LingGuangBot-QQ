@@ -15,7 +15,7 @@ import {
   resolveAccount,
 } from '../src/commands.js';
 import { dedupeKey, toTweet } from '../src/tweet.js';
-import { pickOwnAvatar } from '../src/xgraphql.js';
+import { pickOwnAvatar, extractPhotoTags } from '../src/xgraphql.js';
 import { formatTweet, formatTweetMarkdown } from '../src/format.js';
 import { request } from '../src/http.js';
 import { Poller } from '../src/poller.js';
@@ -423,6 +423,70 @@ test('回复的原推也会翻成中文（回复对象没订阅也一样）', ()
   assert.match(md, /\*\*↩ 回复 下尾みう\*\*/, '要有回复标记');
   assert.match(md, /这对话也太夸张了！/, '原推应显示译文');
   assert.ok(!md.includes('やば会話すぎる'), '原推的日文原文应被译文替换');
+});
+
+test('图片人物标记：显示成「某某 及另外 N 人」，去掉重复和非法类型', () => {
+  const media = [
+    {
+      features: {
+        all: {
+          tags: [
+            { name: '伊藤百花', screen_name: 'momoka_ito1206', type: 'user', user_id: '1' },
+            { name: '小栗有以', screen_name: 'yuiyui_maromaro', type: 'user', user_id: '2' },
+            { name: '小栗有以', screen_name: 'yuiyui_maromaro', type: 'user', user_id: '2' },
+            { name: '某个话题', screen_name: 'topic', type: 'hashtag', user_id: '9' },
+          ],
+        },
+      },
+    },
+    {
+      features: {
+        all: {
+          tags: [{ name: '山口結愛', screen_name: 'yuichi_akb48', type: 'user', user_id: '3' }],
+        },
+      },
+    },
+  ];
+  const tags = extractPhotoTags(media);
+  assert.deepEqual(
+    tags.map((t) => t.name),
+    ['伊藤百花', '小栗有以', '山口結愛'],
+  );
+
+  const cfg = baseConfig();
+  cfg.forward.timeZone = 'Asia/Shanghai';
+  const tweet = {
+    id: 'x:1',
+    link: 'https://x.com/a/status/1',
+    text: '今天是万圣节',
+    published: new Date('2026-10-31T14:19:00Z'),
+    images: ['https://pbs.twimg.com/media/a.jpg'],
+    isReply: false,
+    isRetweet: false,
+  };
+
+  const many = formatTweetMarkdown(tweet, cfg, {
+    images: [{ url: 'qqbot-media://image/v1/A', width: 600, height: 800 }],
+    photoTags: tags,
+  });
+  assert.match(many, /> 伊藤百花 及另外2人/, '多个人时用「及另外 N 人」');
+  assert.ok(
+    many.indexOf('伊藤百花') > many.indexOf('qqbot-media://image/v1/A'),
+    '标记要排在图片下面',
+  );
+
+  const one = formatTweetMarkdown(tweet, cfg, {
+    images: [{ url: 'qqbot-media://image/v1/A', width: 600, height: 800 }],
+    photoTags: [{ name: '伊藤百花' }],
+  });
+  assert.match(one, /> 伊藤百花\n/, '只有一个人时直接写名字');
+  assert.ok(!one.includes('及另外'), '单人时不显示「及另外」');
+
+  // 没有标记就不要多出这一行
+  const none = formatTweetMarkdown(tweet, cfg, {
+    images: [{ url: 'qqbot-media://image/v1/A', width: 600, height: 800 }],
+  });
+  assert.ok(!none.includes('及另外'));
 });
 
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {

@@ -364,6 +364,30 @@ export class XCookieClient {
   }
 }
 
+/**
+ * 从 media 节点里取「人物标记」。
+ * 结构：media[].features.all.tags[] = { name, screen_name, type: 'user', user_id }
+ * 同一张图可能标了多个人，一条推文多张图时会重复，这里按 user_id 去重保序。
+ */
+export function extractPhotoTags(media = []) {
+  const out = [];
+  const seen = new Set();
+  for (const m of Array.isArray(media) ? media : []) {
+    const tags = m?.features?.all?.tags || m?.features?.large?.tags || [];
+    for (const t of Array.isArray(tags) ? tags : []) {
+      if (t?.type && t.type !== 'user') continue;
+      const name = String(t?.name || '').trim();
+      const screenName = String(t?.screen_name || '').trim();
+      if (!name && !screenName) continue;
+      const key = String(t?.user_id || screenName || name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ name, screenName, userId: String(t?.user_id || '') });
+    }
+  }
+  return out;
+}
+
 /** 把 GraphQL 的推文节点转成我们内部统一的 items。 */
 export function xTweetToItem(node, screenName) {
   if (!node) return null;
@@ -384,6 +408,11 @@ export function xTweetToItem(node, screenName) {
     .map((m) => m.media_url_https || m.media_url)
     .filter((u) => typeof u === 'string' && /^https?:\/\//.test(u));
 
+  // 图片「人物标记」：media[].features.all.tags[]，X 客户端会显示成「某某 及另外 N 人」
+  // 转推时原推的 media 在 retweeted_status_result 里，一起看了
+  const innerMedia = legacy.retweeted_status_result?.result?.legacy?.extended_entities?.media || [];
+  const photoTags = extractPhotoTags([...media, ...innerMedia]);
+
   const createdAt = legacy.created_at ? new Date(legacy.created_at) : new Date();
 
   return {
@@ -395,6 +424,7 @@ export function xTweetToItem(node, screenName) {
     contentHtml: '',
     text: legacy.full_text || '',
     images,
+    photoTags,
     raw: JSON.stringify({ id_str: idStr, created_at: legacy.created_at }),
     avatar: userLegacy.profile_image_url_https || '',
     isRetweet: Boolean(legacy.retweeted_status_result),

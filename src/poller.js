@@ -373,6 +373,7 @@ export class Poller {
                   translatedText: group.translate ? translatedText : '',
                   translatedQuoteText: group.translate ? translatedQuoteText : '',
                   translatedReplyText: group.translate ? translatedReplyText : '',
+                  photoTags: displayTweet.photoTags || tweet.photoTags || [],
                 }),
               arkBuilder: (imageUrl) => buildArkCard(tweet, acfg, imageUrl),
             },
@@ -547,6 +548,7 @@ export class Poller {
           translatedText,
           translatedQuoteText,
           translatedReplyText,
+          photoTags: displayTweet.photoTags || tweet.photoTags || [],
         }),
       arkBuilder: (imageUrl) => buildArkCard(tweet, acfg, imageUrl),
     });

@@ -144,6 +144,15 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     lines.push(`![推文配图 #${width}px #${height}px](${img.url})`);
   });
 
+  // 图片「人物标记」：X 会显示成「某某 及另外 N 人」，贴在图片下面
+  const photoTags = Array.isArray(ctx.photoTags) ? ctx.photoTags : [];
+  if (photoTags.length) {
+    const first = photoTags[0]?.name || photoTags[0]?.screenName || '';
+    if (first) {
+      lines.push(photoTags.length > 1 ? `> ${first} 及另外${photoTags.length - 1}人` : `> ${first}`);
+    }
+  }
+
   // 图片 / 视频放不进卡片时，卡片里留一行提示，稍后单独发
   const extras = [];
   if (ctx.videoCount > 0) extras.push(`🎬 视频共 ${ctx.videoCount} 段`);

@@ -45,6 +45,8 @@ export function toTweet(item, cfg = {}) {
     link,
     author: cfg.displayName || item.author || '',
     images: item.images || [],
+    // 图片里被标记的人（X 的「人物标记」，显示成「某某 及另外 N 人」）
+    photoTags: Array.isArray(item.photoTags) ? item.photoTags : [],
     published,
     isRetweet,
     isReply,
