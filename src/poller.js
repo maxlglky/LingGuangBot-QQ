@@ -114,6 +114,8 @@ export class Poller {
       : (tweet?.images || []).map((url) => ({ url }));
     if (own.length) return { photos: own, cardSource: '' };
     const card = extras?.card;
+    // player 卡片：视频会单独发，这里就不再发封面图
+    if (card?.videoUrl) return { photos: [], cardSource: card.domain || '' };
     if (card?.imageUrl) {
       return {
         photos: [{ url: card.imageUrl, width: card.width, height: card.height }],
@@ -121,6 +123,15 @@ export class Poller {
       };
     }
     return { photos: own, cardSource: '' };
+  }
+
+  /** 视频：推文自带视频优先，没有就用外链卡片里的 player 视频。 */
+  videosWithCard(detail, extras) {
+    const own = detail?.videos || [];
+    if (own.length) return own;
+    const src = extras?.card?.videoUrl;
+    if (!src) return own;
+    return [{ url: src, variants: [{ url: src, bitrate: 0 }] }];
   }
 
   /** 引用推文要单独发出去的图片（message 模式）：自带图片优先，没有就用卡片图。 */
@@ -368,7 +379,7 @@ export class Poller {
       let header = null;
       const extras = await this.fetchTweetExtras(acfg, detail?.id || statusId);
       const { photos, cardSource } = this.buildPhotos(detail, tweet, extras);
-      const videos = detail?.videos || [];
+      const videos = this.videosWithCard(detail, extras);
 
       if (acfg.forward.style === 'markdown') {
         try {
@@ -628,7 +639,7 @@ export class Poller {
       quotePhotos,
       header,
       photos,
-      videos: detail?.videos || [],
+      videos: this.videosWithCard(detail, extras),
       quote: quoteBlock,
       repost,
       name: repost ? detail?.author : undefined,

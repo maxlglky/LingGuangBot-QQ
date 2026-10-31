@@ -548,6 +548,34 @@ test('外链卡片：没有媒体时用卡片的预览图，并在图下标「�
   assert.equal(fallback.photos[0].url, card.imageUrl);
   assert.equal(fallback.cardSource, 'fanicon.net');
 
+  // player 卡片：带可下载视频流时，视频单独发，卡片里只留「来自 站点」
+  const playerCard = extractCardLink({
+    card: {
+      legacy: {
+        binding_values: [
+          { key: 'card_name', value: { string_value: 'player' } },
+          { key: 'vanity_url', value: { string_value: 'youtube.com' } },
+          { key: 'player_stream_url', value: { string_value: 'https://video.twimg.com/x.mp4' } },
+          {
+            key: 'player_image',
+            value: { image_value: { url: 'https://pbs.twimg.com/poster.jpg', width: 640, height: 360 } },
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(playerCard.videoUrl, 'https://video.twimg.com/x.mp4');
+  assert.equal(playerCard.domain, 'youtube.com');
+  assert.equal(playerCard.imageUrl, 'https://pbs.twimg.com/poster.jpg', 'player_image 作为封面兜底');
+
+  const playerPhotos = poller.buildPhotos({ photos: [] }, { images: [] }, { card: playerCard });
+  assert.deepEqual(playerPhotos.photos, [], '有视频时不再发封面图');
+  assert.equal(playerPhotos.cardSource, 'youtube.com');
+  assert.equal(
+    poller.videosWithCard({ videos: [] }, { card: playerCard })[0].url,
+    'https://video.twimg.com/x.mp4',
+  );
+
   // 渲染：图片下面一行「来自 fanicon.net」
   const cfg = baseConfig();
   cfg.forward.timeZone = 'Asia/Shanghai';

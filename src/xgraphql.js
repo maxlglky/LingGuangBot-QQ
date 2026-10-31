@@ -455,17 +455,23 @@ export function extractCardLink(result) {
     img('thumbnail_image');
 
   const vanity = str('vanity_url') || str('domain');
-  const domain = str('domain') || vanity;
-  if (!image && !domain) return null;
+  // 展示用的域名优先 vanity_url（tiktok.com 比 www.tiktok.com 干净）
+  const domain = str('vanity_url') || str('domain');
+  // player 卡片（YouTube 之类）会带可直接下载的视频流
+  const videoUrl = str('player_stream_url');
+  const poster = map.get('player_image')?.image_value;
+  if (!image && !domain && !videoUrl) return null;
 
   return {
+    cardName: str('card_name'),
     domain,
     title: str('title'),
     description: str('description'),
     url: /^https?:/i.test(vanity) ? vanity : vanity ? `https://${vanity}` : '',
-    imageUrl: image?.url || '',
-    width: image?.width || 0,
-    height: image?.height || 0,
+    imageUrl: image?.url || poster?.url || '',
+    width: image?.width || Number(poster?.width) || 0,
+    height: image?.height || Number(poster?.height) || 0,
+    videoUrl,
   };
 }
 
