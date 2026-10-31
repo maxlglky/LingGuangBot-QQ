@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { dedupeKey, toTweet } from './tweet.js';
-import { XCookieClient, fetchXCookie } from './xgraphql.js';
+import { XCookieClient, extractPhotoTags, fetchXCookie } from './xgraphql.js';
 import { fetchTweetDetail, resolveRepost } from './fx.js';
 import { buildArkCard, formatTweet, formatTweetMarkdown } from './format.js';
 import { sleep } from './util.js';
@@ -22,6 +22,7 @@ export class Poller {
     this.metaByAccount = new Map();
     this.xStateFile = cfg.statePath ? `${cfg.statePath}.xgraphql.json` : null;
     this.translationCache = new Map();
+    this.photoTagCache = new Map();
   }
 
   /** 账号列表；没配置 accounts 时退化成单账号（兼容旧配置）。 */
@@ -66,6 +67,42 @@ export class Poller {
       default:
         throw new Error(`未知的 provider: ${provider}（可选 xcookie / file）`);
     }
+  }
+
+  /**
+   * 取某条推文的「图片人物标记」。
+   * fxtwitter 不返回这个字段，只能再查一次 X 的 GraphQL（按 id 取单条），结果缓存。
+   */
+  async fetchPhotoTags(acfg, tweetId) {
+    const id = String(tweetId || '').replace(/^x:/, '');
+    if (!id) return [];
+    if (this.photoTagCache.has(id)) return this.photoTagCache.get(id);
+    try {
+      const client = new XCookieClient(acfg, {
+        request: this.request,
+        logger: this.logger,
+        stateFile: this.xStateFile,
+      });
+      if (!client.enabled) return [];
+      const json = await client.tweetResultByRestId(id);
+      const result = json?.data?.tweetResult?.result || json?.data?.tweet_result?.result;
+      const media =
+        result?.legacy?.extended_entities?.media || result?.legacy?.entities?.media || [];
+      const tags = extractPhotoTags(media);
+      if (this.photoTagCache.size > 500) this.photoTagCache.clear();
+      this.photoTagCache.set(id, tags);
+      return tags;
+    } catch (err) {
+      this.logger.debug?.(`取图片人物标记失败（跳过）: ${err.message}`);
+      return [];
+    }
+  }
+
+  /** 主推文图片的人物标记：时间线里带了就直接用，没有就按 id 再查一次。 */
+  async mainPhotoTags(acfg, displayTweet, tweet, detail) {
+    const fromItem = displayTweet?.photoTags?.length ? displayTweet.photoTags : tweet?.photoTags;
+    if (fromItem?.length) return fromItem;
+    return this.fetchPhotoTags(acfg, detail?.id || tweet?.id);
   }
 
   /** 用 X 自带翻译拿简体中文译文；带内存缓存，失败返回空串。 */
@@ -118,6 +155,7 @@ export class Poller {
       return await this.qq.prepareQuote(
         {
           ...parent,
+          photoTags: await this.fetchPhotoTags(acfg, parentId),
           // 原推按它自己的账号名显示，和一张普通卡片一致
           author: parent.author || parent.screenName || displayTweet.replyTo || '对方',
         },
@@ -318,9 +356,15 @@ export class Poller {
       let quoteBlock = null;
       if (detail?.quote && acfg.forward.quote !== false) {
         try {
-          quoteBlock = await this.qq.prepareQuote(detail.quote, {
-            photos: await this.wantInlineImages(acfg).catch(() => false),
-          });
+          quoteBlock = await this.qq.prepareQuote(
+            {
+              ...detail.quote,
+              photoTags: await this.fetchPhotoTags(acfg, detail.quote.id),
+            },
+            {
+              photos: await this.wantInlineImages(acfg).catch(() => false),
+            },
+          );
         } catch (err) {
           this.logger.warn(`[${label}] 准备引用推文失败: ${err.message}`);
         }
@@ -349,6 +393,7 @@ export class Poller {
           const replyContext = displayTweet?.isReply
             ? await this.buildReplyContext(displayTweet, acfg)
             : null;
+          const mainPhotoTags = await this.mainPhotoTags(acfg, displayTweet, tweet, detail);
           const result = await this.qq.deliver(
             group.openid,
             text,
@@ -373,7 +418,7 @@ export class Poller {
                   translatedText: group.translate ? translatedText : '',
                   translatedQuoteText: group.translate ? translatedQuoteText : '',
                   translatedReplyText: group.translate ? translatedReplyText : '',
-                  photoTags: displayTweet.photoTags || tweet.photoTags || [],
+                  photoTags: mainPhotoTags,
                 }),
               arkBuilder: (imageUrl) => buildArkCard(tweet, acfg, imageUrl),
             },
@@ -501,9 +546,15 @@ export class Poller {
     let quoteBlock = null;
     if (detail?.quote && acfg.forward.quote !== false) {
       try {
-        quoteBlock = await this.qq.prepareQuote(detail.quote, {
-          photos: await this.wantInlineImages(acfg).catch(() => false),
-        });
+        quoteBlock = await this.qq.prepareQuote(
+          {
+            ...detail.quote,
+            photoTags: await this.fetchPhotoTags(acfg, detail.quote.id),
+          },
+          {
+            photos: await this.wantInlineImages(acfg).catch(() => false),
+          },
+        );
       } catch {
         /* 引用块失败不影响主卡片 */
       }
@@ -516,6 +567,7 @@ export class Poller {
     const replyContext = displayTweet?.isReply
       ? await this.buildReplyContext(displayTweet, acfg)
       : null;
+    const mainPhotoTags = await this.mainPhotoTags(acfg, displayTweet, tweet, detail);
     const wantTranslate = this.store?.isTranslateOn?.(groupOpenid) === true;
     const translatedText = wantTranslate
       ? await this.translateTweet(acfg, detail?.id || statusId)
@@ -548,7 +600,7 @@ export class Poller {
           translatedText,
           translatedQuoteText,
           translatedReplyText,
-          photoTags: displayTweet.photoTags || tweet.photoTags || [],
+          photoTags: mainPhotoTags,
         }),
       arkBuilder: (imageUrl) => buildArkCard(tweet, acfg, imageUrl),
     });

@@ -470,6 +470,7 @@ export class QQClient {
       name: quote.author,
       text: quote.text,
       images,
+      photoTags: Array.isArray(quote.photoTags) ? quote.photoTags : [],
       link: quote.url,
       time: quote.createdAt,
     };

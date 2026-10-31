@@ -472,9 +472,14 @@ node src/main.js xprobe             # 只验证 X 侧
 
 **图片下面那行「某某 及另外 N 人」是哪来的？** X 的图片可以标记人物，
 数据在 `extended_entities.media[].features.all.tags[]`（每个 tag 带 `name` / `screen_name` / `user_id`）。
-fxtwitter 不返回这个字段，所以只有走 X GraphQL 时间线拿到的推文才有；
+fxtwitter 不返回这个字段，所以：
+
+- 主推文 / 转帖内容：直接用 X GraphQL 时间线里的 `media[].features`（转推会看 `retweeted_status_result` 里的原推）；
+- 引用推文 / 被回复的原推：fxtwitter 只有正文和图片，没有标记，所以额外查一次 GraphQL
+  `TweetResultByRestId`（按 id 取单条），结果按 tweet id 缓存，一条推文只查一次。
+
 渲染时按 X 的样式压成一行引用块放在图片下面：一个人就直接写名字，多个就写「第一个 及另外 N 人」。
-没有标记的推文不会多出这一行。
+引用块里的图片也走同一套逻辑，标记会出现在引用块内部。没有标记的推文不会多出这一行。
 
 **为什么图片要传素材？** 官方文档说 Markdown 里的图片可以直接用公网 URL
 （平台会下载转存），但**腾讯的服务器连不到 `pbs.twimg.com`** —— 实测：

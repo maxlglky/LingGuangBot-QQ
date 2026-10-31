@@ -195,6 +195,14 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
         `![引用配图 #${Math.round(img.width || 520)}px #${Math.round(img.height || 300)}px](${img.url})`,
       );
     });
+    // 引用块里的图也可能标了人，同样放在图下面
+    const qTags = Array.isArray(quote.photoTags) ? quote.photoTags : [];
+    if (qTags.length) {
+      const first = qTags[0]?.name || qTags[0]?.screenName || '';
+      if (first) {
+        inner.push(qTags.length > 1 ? `${first} 及另外${qTags.length - 1}人` : first);
+      }
+    }
     const qmeta = [];
     if (quote.time) qmeta.push(formatLocalTime(new Date(quote.time), cfg.forward.timeZone));
     if (quote.link) qmeta.push(`[查看原帖 ↗](${quote.link})`);

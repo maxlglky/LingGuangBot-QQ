@@ -487,6 +487,24 @@ test('图片人物标记：显示成「某某 及另外 N 人」，去掉重复�
     images: [{ url: 'qqbot-media://image/v1/A', width: 600, height: 800 }],
   });
   assert.ok(!none.includes('及另外'));
+
+  // 引用块里的图片标记也要显示在引用块内
+  const quoted = formatTweetMarkdown(tweet, cfg, {
+    images: [],
+    quote: {
+      name: '被引用的人',
+      text: '引用正文',
+      link: 'https://x.com/b/status/2',
+      time: '2026-10-31T13:00:00Z',
+      images: [{ url: 'qqbot-media://image/v1/Q', width: 520, height: 390 }],
+      photoTags: [{ name: '小栗有以' }, { name: '山口結愛' }],
+    },
+  });
+  assert.match(quoted, /> 小栗有以 及另外1人/, '引用块里也要显示人物标记');
+  assert.ok(
+    quoted.indexOf('小栗有以') > quoted.indexOf('qqbot-media://image/v1/Q'),
+    '引用块的标记要排在引用图下面',
+  );
 });
 
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {
