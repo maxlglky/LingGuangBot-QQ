@@ -457,9 +457,28 @@ export async function fetchXCookie(cfg, { request, logger, stateFile, meta }) {
   }
 
   if (meta && !meta.avatar) {
-    const withAvatar = items.find((i) => i.avatar);
-    if (withAvatar) meta.avatar = withAvatar.avatar;
+    meta.avatar = pickOwnAvatar(json, items, handle);
   }
   if (!items.length) throw new Error('X 返回的时间线是空的');
   return items;
+}
+
+/**
+ * 从时间线响应里挑出「这个账号自己」的头像。
+ *
+ * 坑：时间线里混着转推，`item.avatar` 是**被转那个人**的头像。
+ * 以前直接 `items.find(i => i.avatar)` 就中招，账号自己的头像被换成了别人的。
+ */
+export function pickOwnAvatar(json, items = [], handle = '') {
+  const result = json?.data?.user?.result || {};
+  const own =
+    result.avatar?.image_url ||
+    result.legacy?.profile_image_url_https ||
+    result.core?.user_results?.result?.legacy?.profile_image_url_https ||
+    '';
+  if (own) return own;
+  const name = String(handle || '').replace(/^@/, '');
+  if (!name) return '';
+  const tag = `/${name}/status/`;
+  return items.find((i) => i.avatar && String(i.link || '').includes(tag))?.avatar || '';
 }

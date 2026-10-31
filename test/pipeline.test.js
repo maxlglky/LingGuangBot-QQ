@@ -15,6 +15,7 @@ import {
   resolveAccount,
 } from '../src/commands.js';
 import { dedupeKey, toTweet } from '../src/tweet.js';
+import { pickOwnAvatar } from '../src/xgraphql.js';
 import { formatTweet } from '../src/format.js';
 import { request } from '../src/http.js';
 import { Poller } from '../src/poller.js';
@@ -370,6 +371,26 @@ test('网络瞬断（TLS/连接重置）会自动重试，POST 默认不重试',
   } finally {
     server2.close();
   }
+});
+
+test('账号头像不会被转推对象的头像顶替', () => {
+  // 时间线第一条是别人的转推，它的 avatar 属于被转的人
+  const items = [
+    { link: 'https://x.com/other/status/1', avatar: 'https://pbs.twimg.com/other.jpg' },
+    { link: 'https://x.com/yunachan_akb48/status/2', avatar: 'https://pbs.twimg.com/mine.jpg' },
+  ];
+  assert.equal(pickOwnAvatar({}, items, 'yunachan_akb48'), 'https://pbs.twimg.com/mine.jpg');
+  // 响应里带账号本体信息时优先用它
+  assert.equal(
+    pickOwnAvatar(
+      { data: { user: { result: { avatar: { image_url: 'https://pbs.twimg.com/own.jpg' } } } } },
+      items,
+      'yunachan_akb48',
+    ),
+    'https://pbs.twimg.com/own.jpg',
+  );
+  // 全都拿不到就返回空串（宁可没头像，也别显示别人的）
+  assert.equal(pickOwnAvatar({}, [], 'yunachan_akb48'), '');
 });
 
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {

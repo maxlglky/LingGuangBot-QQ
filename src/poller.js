@@ -307,7 +307,7 @@ export class Poller {
           header = await this.qq.prepareHeader({
             avatarUrls: repost
               ? [detail?.authorAvatar]
-              : [acfg.x.avatarUrl, this.metaFor(account).avatar, detail?.authorAvatar],
+              : [acfg.x.avatarUrl, detail?.authorAvatar, this.metaFor(account).avatar],
             badgePath: badgeAllowed ? acfg.forward.verifiedBadgePath || null : null,
           });
         } catch (err) {
@@ -483,7 +483,7 @@ export class Poller {
         header = await this.qq.prepareHeader({
           avatarUrls: repost
             ? [detail?.authorAvatar]
-            : [acfg.x.avatarUrl, this.metaFor(account).avatar, detail?.authorAvatar],
+            : [acfg.x.avatarUrl, detail?.authorAvatar, this.metaFor(account).avatar],
           badgePath: badgeAllowed ? acfg.forward.verifiedBadgePath || null : null,
         });
       } catch (err) {
