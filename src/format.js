@@ -153,6 +153,10 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     }
   }
 
+  // 外链卡片（比如 fanicon 的「New Post Available」）：X 会在图下面标来自哪个站点
+  const cardSource = String(ctx.cardSource || '').trim();
+  if (cardSource) lines.push(`> 来自 ${cardSource}`);
+
   // 图片 / 视频放不进卡片时，卡片里留一行提示，稍后单独发
   const extras = [];
   if (ctx.videoCount > 0) extras.push(`🎬 视频共 ${ctx.videoCount} 段`);

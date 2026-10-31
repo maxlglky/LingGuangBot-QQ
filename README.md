@@ -481,6 +481,12 @@ fxtwitter 不返回这个字段，所以：
 渲染时按 X 的样式压成一行引用块放在图片下面：一个人就直接写名字，多个就写「第一个 及另外 N 人」。
 引用块里的图片也走同一套逻辑，标记会出现在引用块内部。没有标记的推文不会多出这一行。
 
+**带外链卡片的推文（比如 fanicon 的「New Post Available」）怎么处理？**
+这类推文的媒体其实是 X 的链接预览卡片，fxtwitter 只返回 `twitter_card: "tweet"` 一个枚举值，
+内容在 GraphQL 的 `card.legacy.binding_values` 里（`domain` / `title` / `photo_image_full_size_original` 等）。
+所以没有自带图片时，会把卡片预览图当成图片发出去（同样走素材库或图片消息），
+并在图片下面补一行 `> 来自 fanicon.net`，和 X 客户端的显示一致。
+
 **为什么图片要传素材？** 官方文档说 Markdown 里的图片可以直接用公网 URL
 （平台会下载转存），但**腾讯的服务器连不到 `pbs.twimg.com`** —— 实测：
 同一张 Markdown 里放腾讯 COS 的公共图能正常显示，放 X 图床的图（带不带参数都一样）

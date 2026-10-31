@@ -423,6 +423,52 @@ export function extractPhotoTags(media = []) {
   return out;
 }
 
+/**
+ * 从推文的 card 节点里取「外链卡片」信息（链接预览）。
+ * 结构：card.legacy.binding_values[] = [{ key, value: { string_value } | { image_value } }]
+ * 图片优先取原图，其次大图，最后缩略图。
+ */
+export function extractCardLink(result) {
+  const values = result?.card?.legacy?.binding_values || [];
+  if (!values.length) return null;
+
+  const map = new Map();
+  for (const item of values) {
+    if (item?.key) map.set(item.key, item.value || {});
+  }
+  const str = (key) => String(map.get(key)?.string_value || '');
+  const img = (key) => {
+    const iv = map.get(key)?.image_value;
+    if (!iv?.url) return null;
+    return { url: iv.url, width: Number(iv.width) || 0, height: Number(iv.height) || 0 };
+  };
+
+  const image =
+    img('photo_image_full_size_original') ||
+    img('summary_photo_image_original') ||
+    img('thumbnail_image_original') ||
+    img('photo_image_full_size_large') ||
+    img('summary_photo_image_large') ||
+    img('thumbnail_image_large') ||
+    img('photo_image_full_size') ||
+    img('summary_photo_image') ||
+    img('thumbnail_image');
+
+  const vanity = str('vanity_url') || str('domain');
+  const domain = str('domain') || vanity;
+  if (!image && !domain) return null;
+
+  return {
+    domain,
+    title: str('title'),
+    description: str('description'),
+    url: /^https?:/i.test(vanity) ? vanity : vanity ? `https://${vanity}` : '',
+    imageUrl: image?.url || '',
+    width: image?.width || 0,
+    height: image?.height || 0,
+  };
+}
+
 /** 把 GraphQL 的推文节点转成我们内部统一的 items。 */
 export function xTweetToItem(node, screenName) {
   if (!node) return null;

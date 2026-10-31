@@ -15,7 +15,7 @@ import {
   resolveAccount,
 } from '../src/commands.js';
 import { dedupeKey, toTweet } from '../src/tweet.js';
-import { pickOwnAvatar, extractPhotoTags } from '../src/xgraphql.js';
+import { pickOwnAvatar, extractPhotoTags, extractCardLink } from '../src/xgraphql.js';
 import { formatTweet, formatTweetMarkdown } from '../src/format.js';
 import { request } from '../src/http.js';
 import { Poller } from '../src/poller.js';
@@ -505,6 +505,70 @@ test('图片人物标记：显示成「某某 及另外 N 人」，去掉重复�
     quoted.indexOf('小栗有以') > quoted.indexOf('qqbot-media://image/v1/Q'),
     '引用块的标记要排在引用图下面',
   );
+});
+
+test('外链卡片：没有媒体时用卡片的预览图，并在图下标「来自 站点」', () => {
+  // X GraphQL 的 card.legacy.binding_values 结构
+  const result = {
+    card: {
+      legacy: {
+        binding_values: [
+          { key: 'domain', value: { string_value: 'fanicon.net', type: 'STRING' } },
+          { key: 'vanity_url', value: { string_value: 'fanicon.net', type: 'STRING' } },
+          { key: 'title', value: { string_value: '愛美のファンコミュニティ', type: 'STRING' } },
+          {
+            key: 'photo_image_full_size_original',
+            value: {
+              image_value: {
+                url: 'https://pbs.twimg.com/card_img/1/x?format=jpg&name=orig',
+                width: 1200,
+                height: 675,
+              },
+              type: 'IMAGE',
+            },
+          },
+        ],
+      },
+    },
+  };
+  const card = extractCardLink(result);
+  assert.equal(card.domain, 'fanicon.net');
+  assert.equal(card.title, '愛美のファンコミュニティ');
+  assert.equal(card.imageUrl, 'https://pbs.twimg.com/card_img/1/x?format=jpg&name=orig');
+  assert.equal(card.width, 1200);
+  assert.equal(extractCardLink({}), null, '没有 card 就返回 null');
+
+  // 组装图片：有推文自带图片时优先，没有才用卡片图
+  const poller = new Poller({ cfg: baseConfig(), qq: null, store: null, logger: captureLogger() });
+  const own = poller.buildPhotos({ photos: [{ url: 'https://pbs.twimg.com/media/a.jpg' }] }, {}, { card });
+  assert.equal(own.photos[0].url, 'https://pbs.twimg.com/media/a.jpg');
+  assert.equal(own.cardSource, '');
+
+  const fallback = poller.buildPhotos({ photos: [] }, { images: [] }, { card });
+  assert.equal(fallback.photos[0].url, card.imageUrl);
+  assert.equal(fallback.cardSource, 'fanicon.net');
+
+  // 渲染：图片下面一行「来自 fanicon.net」
+  const cfg = baseConfig();
+  cfg.forward.timeZone = 'Asia/Shanghai';
+  const md = formatTweetMarkdown(
+    {
+      id: 'x:1',
+      link: 'https://x.com/aimi_sound/status/1',
+      text: '笑ってやって',
+      published: new Date('2026-10-31T15:14:00Z'),
+      images: [],
+      isReply: false,
+      isRetweet: false,
+    },
+    cfg,
+    {
+      images: [{ url: 'qqbot-media://image/v1/C', width: 600, height: 338 }],
+      cardSource: 'fanicon.net',
+    },
+  );
+  assert.match(md, /> 来自 fanicon\.net/);
+  assert.ok(md.indexOf('来自 fanicon.net') > md.indexOf('qqbot-media://image/v1/C'), '要在图片下面');
 });
 
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {

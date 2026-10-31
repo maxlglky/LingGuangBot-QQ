@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { dedupeKey, toTweet } from './tweet.js';
-import { XCookieClient, extractPhotoTags, fetchXCookie } from './xgraphql.js';
+import { XCookieClient, extractCardLink, extractPhotoTags, fetchXCookie } from './xgraphql.js';
 import { fetchTweetDetail, resolveRepost } from './fx.js';
 import { buildArkCard, formatTweet, formatTweetMarkdown } from './format.js';
 import { sleep } from './util.js';
@@ -70,12 +70,13 @@ export class Poller {
   }
 
   /**
-   * 取某条推文的「图片人物标记」。
-   * fxtwitter 不返回这个字段，只能再查一次 X 的 GraphQL（按 id 取单条），结果缓存。
+   * 取某条推文 fxtwitter 给不了的额外信息：图片人物标记 + 外链卡片。
+   * 只能再查一次 X 的 GraphQL（按 id 取单条），结果按 id 缓存。
    */
-  async fetchPhotoTags(acfg, tweetId) {
+  async fetchTweetExtras(acfg, tweetId) {
     const id = String(tweetId || '').replace(/^x:/, '');
-    if (!id) return [];
+    const empty = { photoTags: [], card: null };
+    if (!id) return empty;
     if (this.photoTagCache.has(id)) return this.photoTagCache.get(id);
     try {
       const client = new XCookieClient(acfg, {
@@ -83,19 +84,43 @@ export class Poller {
         logger: this.logger,
         stateFile: this.xStateFile,
       });
-      if (!client.enabled) return [];
+      if (!client.enabled) return empty;
       const json = await client.tweetResultByRestId(id);
       const result = json?.data?.tweetResult?.result || json?.data?.tweet_result?.result;
       const media =
         result?.legacy?.extended_entities?.media || result?.legacy?.entities?.media || [];
-      const tags = extractPhotoTags(media);
+      const extras = {
+        photoTags: extractPhotoTags(media),
+        card: extractCardLink(result),
+      };
       if (this.photoTagCache.size > 500) this.photoTagCache.clear();
-      this.photoTagCache.set(id, tags);
-      return tags;
+      this.photoTagCache.set(id, extras);
+      return extras;
     } catch (err) {
-      this.logger.debug?.(`取图片人物标记失败（跳过）: ${err.message}`);
-      return [];
+      this.logger.debug?.(`取推文附加信息失败（跳过）: ${err.message}`);
+      return empty;
     }
+  }
+
+  /** 只要人物标记（兼容旧调用）。 */
+  async fetchPhotoTags(acfg, tweetId) {
+    return (await this.fetchTweetExtras(acfg, tweetId)).photoTags;
+  }
+
+  /** 组装要发出去的图片：推文自带图片优先，没有就用「外链卡片」的预览图。 */
+  buildPhotos(detail, tweet, extras) {
+    const own = detail?.photos?.length
+      ? detail.photos
+      : (tweet?.images || []).map((url) => ({ url }));
+    if (own.length) return { photos: own, cardSource: '' };
+    const card = extras?.card;
+    if (card?.imageUrl) {
+      return {
+        photos: [{ url: card.imageUrl, width: card.width, height: card.height }],
+        cardSource: card.domain || '',
+      };
+    }
+    return { photos: own, cardSource: '' };
   }
 
   /** 主推文图片的人物标记：时间线里带了就直接用，没有就按 id 再查一次。 */
@@ -333,9 +358,8 @@ export class Poller {
 
       let anySuccess = false;
       let header = null;
-      const photos = detail?.photos?.length
-        ? detail.photos
-        : (tweet.images || []).map((url) => ({ url }));
+      const extras = await this.fetchTweetExtras(acfg, detail?.id || statusId);
+      const { photos, cardSource } = this.buildPhotos(detail, tweet, extras);
       const videos = detail?.videos || [];
 
       if (acfg.forward.style === 'markdown') {
@@ -419,6 +443,7 @@ export class Poller {
                   translatedQuoteText: group.translate ? translatedQuoteText : '',
                   translatedReplyText: group.translate ? translatedReplyText : '',
                   photoTags: mainPhotoTags,
+                  cardSource,
                 }),
               arkBuilder: (imageUrl) => buildArkCard(tweet, acfg, imageUrl),
             },
@@ -560,9 +585,8 @@ export class Poller {
       }
     }
 
-    const photos = detail?.photos?.length
-      ? detail.photos
-      : (tweet.images || []).map((url) => ({ url }));
+    const extras = await this.fetchTweetExtras(acfg, detail?.id || statusId);
+    const { photos, cardSource } = this.buildPhotos(detail, tweet, extras);
 
     const replyContext = displayTweet?.isReply
       ? await this.buildReplyContext(displayTweet, acfg)
@@ -601,6 +625,7 @@ export class Poller {
           translatedQuoteText,
           translatedReplyText,
           photoTags: mainPhotoTags,
+          cardSource,
         }),
       arkBuilder: (imageUrl) => buildArkCard(tweet, acfg, imageUrl),
     });
