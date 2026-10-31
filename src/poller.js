@@ -123,6 +123,12 @@ export class Poller {
     return { photos: own, cardSource: '' };
   }
 
+  /** 引用推文要单独发出去的图片（message 模式）：自带图片优先，没有就用卡片图。 */
+  quotePhotosFor(quote, extras) {
+    if (!quote) return [];
+    return this.buildPhotos(quote, null, extras).photos;
+  }
+
   /** 主推文图片的人物标记：时间线里带了就直接用，没有就按 id 再查一次。 */
   async mainPhotoTags(acfg, displayTweet, tweet, detail) {
     const fromItem = displayTweet?.photoTags?.length ? displayTweet.photoTags : tweet?.photoTags;
@@ -177,10 +183,12 @@ export class Poller {
       const parent = await fetchTweetDetail(parentId);
       if (!parent) return null;
       const photos = await this.wantInlineImages(acfg).catch(() => false);
+      const parentExtras = await this.fetchTweetExtras(acfg, parentId);
       return await this.qq.prepareQuote(
         {
           ...parent,
-          photoTags: await this.fetchPhotoTags(acfg, parentId),
+          photoTags: parentExtras.photoTags,
+          card: parentExtras.card,
           // 原推按它自己的账号名显示，和一张普通卡片一致
           author: parent.author || parent.screenName || displayTweet.replyTo || '对方',
         },
@@ -378,12 +386,16 @@ export class Poller {
       }
 
       let quoteBlock = null;
+      let quotePhotos = [];
       if (detail?.quote && acfg.forward.quote !== false) {
         try {
+          const quoteExtras = await this.fetchTweetExtras(acfg, detail.quote.id);
+          quotePhotos = this.quotePhotosFor(detail.quote, quoteExtras);
           quoteBlock = await this.qq.prepareQuote(
             {
               ...detail.quote,
-              photoTags: await this.fetchPhotoTags(acfg, detail.quote.id),
+              photoTags: quoteExtras.photoTags,
+              card: quoteExtras.card,
             },
             {
               photos: await this.wantInlineImages(acfg).catch(() => false),
@@ -427,7 +439,7 @@ export class Poller {
               style: acfg.forward.style || 'text',
               markdownImage: await this.wantInlineImages(acfg).catch(() => false),
               imageMode: this.effectiveImageMode(acfg),
-              quotePhotos: detail?.quote?.photos || [],
+              quotePhotos,
               header,
               photos,
               videos,
@@ -569,12 +581,16 @@ export class Poller {
     }
 
     let quoteBlock = null;
+    let quotePhotos = [];
     if (detail?.quote && acfg.forward.quote !== false) {
       try {
+        const quoteExtras = await this.fetchTweetExtras(acfg, detail.quote.id);
+        quotePhotos = this.quotePhotosFor(detail.quote, quoteExtras);
         quoteBlock = await this.qq.prepareQuote(
           {
             ...detail.quote,
-            photoTags: await this.fetchPhotoTags(acfg, detail.quote.id),
+            photoTags: quoteExtras.photoTags,
+            card: quoteExtras.card,
           },
           {
             photos: await this.wantInlineImages(acfg).catch(() => false),
@@ -609,7 +625,7 @@ export class Poller {
       style: acfg.forward.style || 'text',
       markdownImage: await this.wantInlineImages(acfg).catch(() => false),
       imageMode: this.effectiveImageMode(acfg),
-      quotePhotos: detail?.quote?.photos || [],
+      quotePhotos,
       header,
       photos,
       videos: detail?.videos || [],

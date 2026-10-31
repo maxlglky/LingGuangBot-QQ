@@ -461,8 +461,15 @@ export class QQClient {
         .catch(() => null);
       badge = header?.badge || null;
     }
+    // 引用推文自己没有图片、但有外链卡片时，用卡片预览图代替
+    const hasOwnPhotos = Boolean(quote.photos && quote.photos.length);
+    const quoteCard =
+      !hasOwnPhotos && quote.card && quote.card.imageUrl
+        ? { url: quote.card.imageUrl, width: quote.card.width, height: quote.card.height }
+        : null;
+    const photoList = hasOwnPhotos ? quote.photos : quoteCard ? [quoteCard] : [];
     const images = photos
-      ? await this.prepareInlineImages(quote.photos || [], { maxWidth, limit })
+      ? await this.prepareInlineImages(photoList, { maxWidth, limit })
       : [];
     return {
       avatar,
@@ -471,6 +478,7 @@ export class QQClient {
       text: quote.text,
       images,
       photoTags: Array.isArray(quote.photoTags) ? quote.photoTags : [],
+      cardSource: quoteCard ? quote.card.domain || '' : '',
       link: quote.url,
       time: quote.createdAt,
     };

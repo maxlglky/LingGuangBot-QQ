@@ -571,6 +571,52 @@ test('外链卡片：没有媒体时用卡片的预览图，并在图下标「�
   assert.ok(md.indexOf('来自 fanicon.net') > md.indexOf('qqbot-media://image/v1/C'), '要在图片下面');
 });
 
+test('引用 / 回复块也会用卡片图并标「来自 站点」', async () => {
+  const qq = new QQClient({ ...baseConfig(), forward: {} }, captureLogger());
+  qq.mediaCacheFile = null;
+  // 内嵌图要下载+上素材，这里直接打桩
+  qq.prepareInlineImages = async (photos) =>
+    photos.map((p) => ({ url: `qqbot-media://image/v1/${String(p.url).split('/').pop()}`, width: 600, height: 338 }));
+
+  const card = {
+    domain: 'fanicon.net',
+    imageUrl: 'https://pbs.twimg.com/card_img/1/card.jpg',
+    width: 1200,
+    height: 675,
+  };
+
+  const fromCard = await qq.prepareQuote(
+    { author: '爱美/AIMI', text: '笑ってやって', card },
+    { photos: true },
+  );
+  assert.equal(fromCard.images.length, 1, '没有自带图片时用卡片图');
+  assert.equal(fromCard.cardSource, 'fanicon.net');
+
+  const fromPhoto = await qq.prepareQuote(
+    { author: 'x', text: 't', photos: [{ url: 'https://pbs.twimg.com/media/own.jpg' }], card },
+    { photos: true },
+  );
+  assert.equal(fromPhoto.cardSource, '', '有自带图片时不标卡片来源');
+
+  // 渲染：引用块里图片下面要有「来自 fanicon.net」
+  const cfg = baseConfig();
+  cfg.forward.timeZone = 'Asia/Shanghai';
+  const md = formatTweetMarkdown(
+    {
+      id: 'x:1',
+      link: 'https://x.com/aimi_sound/status/1',
+      text: '看这个',
+      published: new Date('2026-10-31T15:20:00Z'),
+      images: [],
+      isReply: false,
+      isRetweet: false,
+    },
+    cfg,
+    { images: [], quote: { ...fromCard, link: 'https://x.com/aimi_sound/status/2' } },
+  );
+  assert.match(md, /> 来自 fanicon\.net/, '引用块里也要标来源');
+});
+
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {
   assert.equal(normalizeCommand('<@!BOT123> 订阅'), '订阅');
   assert.equal(matchKeyword('<@!BOT123> 订阅', DEFAULT_COMMANDS.enable), true);

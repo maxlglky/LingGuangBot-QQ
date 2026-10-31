@@ -207,6 +207,9 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
         inner.push(qTags.length > 1 ? `${first} 及另外${qTags.length - 1}人` : first);
       }
     }
+    // 引用块里的外链卡片
+    const qCard = String(quote.cardSource || '').trim();
+    if (qCard) inner.push(`来自 ${qCard}`);
     const qmeta = [];
     if (quote.time) qmeta.push(formatLocalTime(new Date(quote.time), cfg.forward.timeZone));
     if (quote.link) qmeta.push(`[查看原帖 ↗](${quote.link})`);
