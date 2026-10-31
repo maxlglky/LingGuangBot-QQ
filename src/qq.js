@@ -463,6 +463,7 @@ export class QQClient {
     }
     // 引用推文自己没有图片、但有外链卡片时，用卡片预览图代替
     const hasOwnPhotos = Boolean(quote.photos && quote.photos.length);
+    const cardVideoUrl = !hasOwnPhotos ? quote.card?.videoUrl || '' : '';
     const quoteCard =
       !hasOwnPhotos && quote.card && quote.card.imageUrl
         ? { url: quote.card.imageUrl, width: quote.card.width, height: quote.card.height }
@@ -478,7 +479,9 @@ export class QQClient {
       text: quote.text,
       images,
       photoTags: Array.isArray(quote.photoTags) ? quote.photoTags : [],
-      cardSource: quoteCard ? quote.card.domain || '' : '',
+      cardSource: quoteCard || cardVideoUrl ? quote.card?.domain || '' : '',
+      // 外链 player 卡片的视频：卡片里放不下，交给上层单独发
+      videoUrl: cardVideoUrl,
       link: quote.url,
       time: quote.createdAt,
     };
@@ -908,25 +911,37 @@ export class QQClient {
         }
 
         // 视频：Markdown 不能内嵌，单独作为视频消息发送
+        const sendVideo = async (video) => {
+          // 按码率从低到高逐个尝试，避免高码率 1080p 超出大小限制
+          // 从最高码率开始试，超限/失败再降到下一档
+          const ordered = [...(video.variants || [])].sort(
+            (a, b) => (b.bitrate || 0) - (a.bitrate || 0),
+          );
+          const urls = [...new Set([...ordered.map((v) => v.url), video.url])].filter(Boolean);
+          const local = await this.downloadBinary(urls, {
+            maxBytes: opts.maxVideoBytes ?? 100 * 1024 * 1024,
+          });
+          if (!local) throw new Error('视频下载失败');
+          const info = await this.uploadGroupFileBuffer(groupOpenid, local.buffer, local.name, 2);
+          const extra = nextExtra();
+          if (extra) await this.sendGroupMedia(groupOpenid, info, '🎬 视频', extra);
+          result.videos = (result.videos || 0) + 1;
+        };
+
         if (opts.videos && opts.videos.length) {
           try {
-            const video = opts.videos[0];
-            // 按码率从低到高逐个尝试，避免高码率 1080p 超出大小限制
-            // 从最高码率开始试，超限/失败再降到下一档
-            const ordered = [...(video.variants || [])].sort(
-              (a, b) => (b.bitrate || 0) - (a.bitrate || 0),
-            );
-            const urls = [...new Set([...ordered.map((v) => v.url), video.url])].filter(Boolean);
-            const local = await this.downloadBinary(urls, {
-              maxBytes: opts.maxVideoBytes ?? 100 * 1024 * 1024,
-            });
-            if (!local) throw new Error('视频下载失败');
-            const info = await this.uploadGroupFileBuffer(groupOpenid, local.buffer, local.name, 2);
-            const videoExtra = nextExtra();
-            if (videoExtra) await this.sendGroupMedia(groupOpenid, info, '🎬 视频', videoExtra);
-            result.videos = 1;
+            await sendVideo(opts.videos[0]);
           } catch (err) {
             result.errors.push(`视频: ${err.message}`);
+          }
+        }
+
+        // 引用推文 / 被回复原推里的视频（外链 player 卡片）
+        for (const video of opts.quoteVideos || []) {
+          try {
+            await sendVideo(video);
+          } catch (err) {
+            result.errors.push(`引用视频: ${err.message}`);
           }
         }
 

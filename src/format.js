@@ -210,6 +210,7 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     // 引用块里的外链卡片
     const qCard = String(quote.cardSource || '').trim();
     if (qCard) inner.push(`来自 ${qCard}`);
+    if (quote.videoUrl) inner.push('🎬 视频见下条消息');
     const qmeta = [];
     if (quote.time) qmeta.push(formatLocalTime(new Date(quote.time), cfg.forward.timeZone));
     if (quote.link) qmeta.push(`[查看原帖 ↗](${quote.link})`);

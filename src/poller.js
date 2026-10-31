@@ -441,6 +441,10 @@ export class Poller {
             ? await this.buildReplyContext(displayTweet, acfg)
             : null;
           const mainPhotoTags = await this.mainPhotoTags(acfg, displayTweet, tweet, detail);
+          // 引用推文 / 被回复原推里的外链视频（player 卡片）
+          const quoteVideos = [quoteBlock?.videoUrl, replyContext?.videoUrl]
+            .filter(Boolean)
+            .map((url) => ({ url, variants: [{ url, bitrate: 0 }] }));
           const result = await this.qq.deliver(
             group.openid,
             text,
@@ -451,6 +455,7 @@ export class Poller {
               markdownImage: await this.wantInlineImages(acfg).catch(() => false),
               imageMode: this.effectiveImageMode(acfg),
               quotePhotos,
+              quoteVideos,
               header,
               photos,
               videos,
@@ -619,6 +624,9 @@ export class Poller {
       ? await this.buildReplyContext(displayTweet, acfg)
       : null;
     const mainPhotoTags = await this.mainPhotoTags(acfg, displayTweet, tweet, detail);
+    const quoteVideos = [quoteBlock?.videoUrl, replyContext?.videoUrl]
+      .filter(Boolean)
+      .map((url) => ({ url, variants: [{ url, bitrate: 0 }] }));
     const wantTranslate = this.store?.isTranslateOn?.(groupOpenid) === true;
     const translatedText = wantTranslate
       ? await this.translateTweet(acfg, detail?.id || statusId)
@@ -637,6 +645,7 @@ export class Poller {
       markdownImage: await this.wantInlineImages(acfg).catch(() => false),
       imageMode: this.effectiveImageMode(acfg),
       quotePhotos,
+      quoteVideos,
       header,
       photos,
       videos: this.videosWithCard(detail, extras),

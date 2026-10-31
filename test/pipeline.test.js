@@ -626,6 +626,22 @@ test('引用 / 回复块也会用卡片图并标「来自 站点」', async () =
   );
   assert.equal(fromPhoto.cardSource, '', '有自带图片时不标卡片来源');
 
+  // player 卡片（带视频）：块里回传 videoUrl，交给上层单独发
+  const fromPlayer = await qq.prepareQuote(
+    {
+      author: 'x',
+      text: 't',
+      card: {
+        ...card,
+        domain: 'youtube.com',
+        videoUrl: 'https://video.twimg.com/x.mp4',
+      },
+    },
+    { photos: false },
+  );
+  assert.equal(fromPlayer.videoUrl, 'https://video.twimg.com/x.mp4');
+  assert.equal(fromPlayer.cardSource, 'youtube.com');
+
   // 渲染：引用块里图片下面要有「来自 fanicon.net」
   const cfg = baseConfig();
   cfg.forward.timeZone = 'Asia/Shanghai';
@@ -643,6 +659,38 @@ test('引用 / 回复块也会用卡片图并标「来自 站点」', async () =
     { images: [], quote: { ...fromCard, link: 'https://x.com/aimi_sound/status/2' } },
   );
   assert.match(md, /> 来自 fanicon\.net/, '引用块里也要标来源');
+});
+
+test('引用里的外链视频会单独发一条视频消息', async () => {
+  const calls = [];
+  const { server, port } = await startMockQq((url, body) => calls.push({ url, body }));
+
+  try {
+    const cfg = baseConfig({
+      qq: { apiBase: `http://127.0.0.1:${port}`, tokenBase: `http://127.0.0.1:${port}` },
+    });
+    const qq = new QQClient(cfg, captureLogger());
+    qq.downloadBinary = async () => ({ buffer: Buffer.from('fake-video'), name: 'v.mp4' });
+    qq.uploadGroupFileBuffer = async () => 'FILE_INFO_V';
+
+    const result = await qq.deliver('GROUP_V', 'text', [], {
+      sendImages: false,
+      style: 'markdown',
+      markdownImage: false,
+      markdownBuilder: () => '# 卡片',
+      quoteVideos: [
+        { url: 'https://video.twimg.com/x.mp4', variants: [{ url: 'https://video.twimg.com/x.mp4', bitrate: 0 }] },
+      ],
+    });
+
+    assert.equal(result.markdown, true);
+    assert.equal(result.videos, 1, '引用块里的视频要发出去');
+    const media = calls.filter((c) => c.body.msg_type === 7);
+    assert.equal(media.length, 1);
+    assert.equal(media[0].body.media.file_info, 'FILE_INFO_V');
+  } finally {
+    server.close();
+  }
 });
 
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {
