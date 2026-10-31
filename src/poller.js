@@ -188,13 +188,16 @@ export class Poller {
     };
     const staggerMs = Math.max(0, (this.cfg.forward.accountStaggerSec ?? 3) * 1000);
     let firstAccount = true;
+    this.accountFailures ||= new Map();
     for (const account of this.accounts()) {
+      const label = account.key || account.handle || 'default';
       try {
         if (!firstAccount && staggerMs) {
           await sleep(Math.floor(Math.random() * staggerMs));
         }
         firstAccount = false;
         const r = await this.tickAccount(account, options);
+        this.accountFailures.delete(label);
         summary.accounts += 1;
         summary.fetched += r.fetched;
         summary.seeded += r.seeded;
@@ -205,7 +208,16 @@ export class Poller {
       } catch (err) {
         summary.failed += 1;
         summary.lastError = err.message;
-        this.logger.error(`账号 ${account.key || account.handle} 拉取失败: ${err.message}`);
+        const times = (this.accountFailures.get(label) || 0) + 1;
+        this.accountFailures.set(label, times);
+        // 单次失败多半是代理抖动（已自动重试过），连续失败才算真出问题
+        if (times === 1) {
+          this.logger.warn(
+            `账号 ${label} 本轮拉取失败（${err.message}），下一轮会自动再试；连续失败 3 次以上再排查网络/cookie`,
+          );
+        } else {
+          this.logger.error(`账号 ${label} 连续 ${times} 轮拉取失败: ${err.message}`);
+        }
       }
     }
     this.store.recordRound(summary);

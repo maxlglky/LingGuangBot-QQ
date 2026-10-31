@@ -26,12 +26,26 @@ function prepareLogFile(file) {
 /**
  * 同时输出到控制台和文件。
  * @param {string} level
- * @param {{file?: string}} [options]
+ * @param {{file?: string | (() => string)}} [options] file 可以是函数，
+ *        常驻进程跨天时会自动写到新的日期文件里
  */
 export function createLogger(level = 'info', options = {}) {
   const threshold = LEVELS[level] ?? LEVELS.info;
-  const file = options.file;
-  if (file) prepareLogFile(file);
+  const fileRef = options.file;
+  let resolvedFile = typeof fileRef === 'function' ? null : fileRef;
+  let resolvedDay = null;
+  const filePath = () => {
+    if (typeof fileRef !== 'function') return resolvedFile;
+    // 每秒最多解析一次，避免每行都拼路径
+    const day = localTimestamp().slice(0, 10);
+    if (day !== resolvedDay) {
+      resolvedDay = day;
+      resolvedFile = fileRef();
+      if (resolvedFile) prepareLogFile(resolvedFile);
+    }
+    return resolvedFile;
+  };
+  if (resolvedFile) prepareLogFile(resolvedFile);
 
   const emit = (name, sink) => (...args) => {
     if ((LEVELS[name] ?? 0) < threshold) return;
@@ -40,6 +54,7 @@ export function createLogger(level = 'info', options = {}) {
       .join(' ');
     const line = `${localTimestamp()} ${name.toUpperCase().padEnd(5)} ${text}`;
     sink(line);
+    const file = filePath();
     if (file) {
       try {
         appendFileSync(file, line + '\n', 'utf8');

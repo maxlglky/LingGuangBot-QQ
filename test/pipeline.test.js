@@ -331,6 +331,47 @@ test('图片模式 auto：素材库宽裕就内嵌，快满了自动改成单独
   assert.equal(await make({ markdownImage: true }, 99).wantInlineImages(), true);
 });
 
+test('网络瞬断（TLS/连接重置）会自动重试，POST 默认不重试', async () => {
+  let hits = 0;
+  const server = createServer((req, res) => {
+    hits += 1;
+    if (hits < 3) {
+      req.socket.destroy(); // 模拟代理抖断
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end('ok');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+
+  try {
+    const res = await request(`http://127.0.0.1:${port}/x`, { retries: 2, timeoutMs: 5000 });
+    assert.equal(res.status, 200);
+    assert.equal(res.text, 'ok');
+    assert.equal(hits, 3, '失败两次后第三次应成功');
+  } finally {
+    server.close();
+  }
+
+  // POST 默认不重试，免得重复提交
+  let postHits = 0;
+  const server2 = createServer((req) => {
+    postHits += 1;
+    req.socket.destroy();
+  });
+  await new Promise((r) => server2.listen(0, '127.0.0.1', r));
+  const port2 = server2.address().port;
+  try {
+    await assert.rejects(() =>
+      request(`http://127.0.0.1:${port2}/x`, { method: 'POST', body: 'a', timeoutMs: 5000 }),
+    );
+    assert.equal(postHits, 1, 'POST 不应该被自动重试');
+  } finally {
+    server2.close();
+  }
+});
+
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {
   assert.equal(normalizeCommand('<@!BOT123> 订阅'), '订阅');
   assert.equal(matchKeyword('<@!BOT123> 订阅', DEFAULT_COMMANDS.enable), true);

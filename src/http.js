@@ -72,14 +72,49 @@ function tunnelAgent(proxyUrl) {
   return agent;
 }
 
+/** 这类错误是连接层的瞬时故障（代理抖动、TLS 被重置），重试通常就能过。 */
+const TRANSIENT_ERROR =
+  /ECONNRESET|ETIMEDOUT|ECONNREFUSED|EPIPE|EAI_AGAIN|ENETUNREACH|socket hang up|Client network socket disconnected|secure TLS connection|代理连接超时|代理 CONNECT 失败|请求超时/i;
+
+function isTransient(err) {
+  if (!err) return false;
+  if (err.code && TRANSIENT_ERROR.test(String(err.code))) return true;
+  return TRANSIENT_ERROR.test(String(err.message || ''));
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * 发起 HTTP(S) 请求。
+ * 连接层错误会自动重试（默认 GET 重试 2 次），POST 默认不重试，避免重复提交。
  * @param {string} url
  * @param {{method?:string, headers?:Record<string,string>, body?:string|Buffer,
- *          proxy?:string, timeoutMs?:number, redirect?:number, maxBytes?:number}} [opts]
+ *          proxy?:string, timeoutMs?:number, redirect?:number, maxBytes?:number,
+ *          retries?:number}} [opts]
  * @returns {Promise<{status:number, headers:Record<string,string>, body:Buffer, text:string, url:string}>}
  */
 export async function request(url, opts = {}) {
+  const method = (opts.method || 'GET').toUpperCase();
+  const retries = Math.max(
+    0,
+    opts.retries ?? (method === 'GET' || method === 'HEAD' ? 2 : 0),
+  );
+
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await requestWithRedirects(url, opts);
+    } catch (err) {
+      lastError = err;
+      if (attempt >= retries || !isTransient(err)) throw err;
+      // 0.4s、0.9s 退避，再带一点随机，避免和轮询撞在一起
+      await sleep(400 * (attempt + 1) + Math.floor(Math.random() * 300));
+    }
+  }
+  throw lastError;
+}
+
+async function requestWithRedirects(url, opts = {}) {
   let current = url;
   let method = (opts.method || 'GET').toUpperCase();
   let body = opts.body;

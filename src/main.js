@@ -105,13 +105,15 @@ async function loadConfig() {
 
 async function buildContext() {
   const cfg = await loadConfig();
-  // 按天分文件，避免单个 run.log 被外部程序占用时整份日志写不进去
-  const now = new Date();
-  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
-    now.getDate(),
-  ).padStart(2, '0')}`;
+  // 按天分文件：常驻进程跨天会自动写到新的日期文件
   const logger = createLogger(cfg.logLevel, {
-    file: join(ROOT, 'logs', `run-${day}.log`),
+    file: () => {
+      const d = new Date();
+      const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate(),
+      ).padStart(2, '0')}`;
+      return join(ROOT, 'logs', `run-${day}.log`);
+    },
   });
   const store = new Store(cfg.statePath);
   await store.load();
