@@ -16,7 +16,7 @@ import {
 } from '../src/commands.js';
 import { dedupeKey, toTweet } from '../src/tweet.js';
 import { pickOwnAvatar } from '../src/xgraphql.js';
-import { formatTweet } from '../src/format.js';
+import { formatTweet, formatTweetMarkdown } from '../src/format.js';
 import { request } from '../src/http.js';
 import { Poller } from '../src/poller.js';
 import { GroupRateLimiter, QQClient } from '../src/qq.js';
@@ -391,6 +391,38 @@ test('账号头像不会被转推对象的头像顶替', () => {
   );
   // 全都拿不到就返回空串（宁可没头像，也别显示别人的）
   assert.equal(pickOwnAvatar({}, [], 'yunachan_akb48'), '');
+});
+
+test('回复的原推也会翻成中文（回复对象没订阅也一样）', () => {
+  const cfg = baseConfig();
+  cfg.forward.timeZone = 'Asia/Shanghai';
+  const md = formatTweetMarkdown(
+    {
+      id: 'x:1',
+      link: 'https://x.com/yunachan_akb48/status/1',
+      text: '这段对话太离谱了！',
+      published: new Date('2026-10-31T12:55:00Z'),
+      isReply: true,
+      replyTo: '下尾みう',
+      replyToStatusId: '2',
+      images: [],
+    },
+    cfg,
+    {
+      replyContext: {
+        name: '下尾みう',
+        text: '@yunachan_akb48 やば会話すぎる！😏',
+        link: 'https://x.com/shimoo/status/2',
+        time: '2026-10-31T12:49:00Z',
+      },
+      translatedText: '这段对话太离谱了！',
+      translatedReplyText: '这对话也太夸张了！😏',
+    },
+  );
+
+  assert.match(md, /\*\*↩ 回复 下尾みう\*\*/, '要有回复标记');
+  assert.match(md, /这对话也太夸张了！/, '原推应显示译文');
+  assert.ok(!md.includes('やば会話すぎる'), '原推的日文原文应被译文替换');
 });
 
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {

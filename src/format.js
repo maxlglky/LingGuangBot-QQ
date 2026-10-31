@@ -168,11 +168,13 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
       (quote.name || '引用推文') +
       (quote.badge ? ` ![认证 #14px #16px](${quote.badge})` : '');
     const inner = [qhead];
-    // 引用推文的正文同样用译文（开启翻译时）
-    const quoteText =
-      quote === ctx.quote && ctx.translatedQuoteText
-        ? String(ctx.translatedQuoteText)
-        : quote.text || '';
+    // 引用推文 / 被回复的原推在开启翻译时也显示译文
+    let quoteText = quote.text || '';
+    if (quote === ctx.quote && ctx.translatedQuoteText) {
+      quoteText = String(ctx.translatedQuoteText);
+    } else if (quote === ctx.replyContext && ctx.translatedReplyText) {
+      quoteText = String(ctx.translatedReplyText);
+    }
     if (quoteText) {
       inner.push('');
       for (const line of escapeMarkdownText(quoteText).split('\n')) inner.push(line);

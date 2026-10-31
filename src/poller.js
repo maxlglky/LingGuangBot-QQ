@@ -328,10 +328,15 @@ export class Poller {
 
       let translatedText = '';
       let translatedQuoteText = '';
+      let translatedReplyText = '';
       if (groups.some((g) => g.translate === true)) {
         translatedText = await this.translateTweet(acfg, detail?.id || statusId);
         if (detail?.quote?.id) {
           translatedQuoteText = await this.translateTweet(acfg, detail.quote.id);
+        }
+        // 被回复的那条原推也要翻译（回复对象可能是任何账号，甚至没订阅的）
+        if (displayTweet?.replyToStatusId) {
+          translatedReplyText = await this.translateTweet(acfg, displayTweet.replyToStatusId);
         }
       }
 
@@ -367,6 +372,7 @@ export class Poller {
                   replyContext,
                   translatedText: group.translate ? translatedText : '',
                   translatedQuoteText: group.translate ? translatedQuoteText : '',
+                  translatedReplyText: group.translate ? translatedReplyText : '',
                 }),
               arkBuilder: (imageUrl) => buildArkCard(tweet, acfg, imageUrl),
             },
@@ -515,6 +521,10 @@ export class Poller {
       : '';
     const translatedQuoteText =
       wantTranslate && detail?.quote?.id ? await this.translateTweet(acfg, detail.quote.id) : '';
+    const translatedReplyText =
+      wantTranslate && displayTweet?.replyToStatusId
+        ? await this.translateTweet(acfg, displayTweet.replyToStatusId)
+        : '';
 
     return this.qq.deliver(groupOpenid, text, displayTweet.images || [], {
       replyTo: options.replyTo || null,
@@ -536,6 +546,7 @@ export class Poller {
           replyContext,
           translatedText,
           translatedQuoteText,
+          translatedReplyText,
         }),
       arkBuilder: (imageUrl) => buildArkCard(tweet, acfg, imageUrl),
     });
