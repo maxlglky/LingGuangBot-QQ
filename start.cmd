@@ -5,7 +5,8 @@ cd /d "%~dp0"
 if not exist logs mkdir logs
 if exist .stop del /q .stop >nul 2>&1
 if not exist ".proxy\config.yaml" node scripts\prepare-local-proxy.mjs
-powershell -NoProfile -Command "if (-not (Get-NetTCPConnection -LocalPort 17899 -State Listen -ErrorAction SilentlyContinue)) { Start-Process -WindowStyle Hidden -FilePath 'C:\Program Files\ClashForWindows\resources\static\files\win\x64\clash-win64.exe' -ArgumentList '-d','.proxy','-f','.proxy\config.yaml' }"
+if not defined CLASH_EXE set "CLASH_EXE=C:\Program Files\ClashForWindows\resources\static\files\win\x64\clash-win64.exe"
+powershell -NoProfile -Command "if (-not (Get-NetTCPConnection -LocalPort 17899 -State Listen -ErrorAction SilentlyContinue)) { Start-Process -WindowStyle Hidden -FilePath '%CLASH_EXE%' -ArgumentList '-d','.proxy','-f','.proxy\config.yaml' }"
 echo.
 echo  ============================================
 echo   LingGuangBot-QQ  X -> QQ forwarder

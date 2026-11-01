@@ -153,7 +153,7 @@ async function cmdDoctor() {
   const { cfg, logger, store, qq, poller } = await buildContext();
   let ok = true;
 
-  process.stdout.write('\n[1/4] 检查 QQ 凭据 ... ');
+  process.stdout.write('\n[1/3] 检查 QQ 凭据 ... ');
   try {
     const token = await qq.token(true);
     console.log(`OK (token ${truncate(token, 8)}…, 有效期约 1 小时)`);
@@ -162,7 +162,7 @@ async function cmdDoctor() {
     console.log(`失败: ${err.message}`);
   }
 
-  process.stdout.write('[2/4] 检查推文源 ... ');
+  process.stdout.write('[2/3] 检查推文源 ... ');
   try {
     const collected = await poller.collectTweets();
     console.log(`OK，拿到 ${collected.length} 条候选推文`);
@@ -179,7 +179,7 @@ async function cmdDoctor() {
     console.log('        3) net.proxy 是否能出网访问 x.com（默认 127.0.0.1:17899）');
   }
 
-  process.stdout.write('[3/4] 检查群名单 ... ');
+  process.stdout.write('[3/3] 检查群名单 ... ');
   const groups = store.listGroups();
   console.log(groups.length ? `OK，${groups.length} 个群` : '为空（需要先 @ 一次机器人）');
   if (groups.length) printGroups(store, logger);
@@ -191,7 +191,6 @@ async function cmdDoctor() {
   return ok ? 0 : 1;
 }
 
-/** 「最新」指令：用被动回复把最近几条推文发出来（主动消息没权限时的兜底）。 */
 /**
  * 「最新」指令：只发一条推文，且必须是 Markdown 卡片（走被动回复通道）。
  * - /最新        取本会话已订阅账号里最新的一条

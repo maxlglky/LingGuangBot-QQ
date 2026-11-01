@@ -11,8 +11,23 @@
 </p>
 
 想第一时间看到某个账号的更新，又不想一直刷 X？把它交给 LingGuangBot-QQ：
-默认每 5 分钟检查一次，有新推就发到你的群或私聊，头像、蓝 V、正文、配图、引用、转推、视频、
-时间、原帖链接都能带上；连「图片里标记了谁」这种细节也照 X 的样式还原（`> 伊藤百花 及另外4人`）。
+默认每 5 分钟检查一次，有新推就发到你的群或私聊。
+
+**卡片里会还原这些细节**（都按 X 客户端的样式来）：
+
+| 元素 | 效果 |
+| --- | --- |
+| 头像 + 蓝 V | `# ![头像] **账号名** ![认证]` |
+| 转推横幅 | `## **⇄ 谁 已转帖**` + `> 转帖于 …` |
+| 回复标记 | `**↩ 回复 谁**`，下面跟着被回复的原推（缩进引用块） |
+| 引用推文 | `## 原推作者` + 正文 + 配图，整块 `>` 缩进 |
+| 配图 | 真实宽高、多图并排；也可以改成卡片外的图片消息（见 `imageMode`） |
+| 图片人物标记 | 图下 `> 伊藤百花 及另外4人` |
+| 外链卡片 | fanicon / TikTok 这类链接预览：发预览图 + `> 来自 fanicon.net` |
+| 视频 | 卡片里提示 `> 🎬 视频共 N 段`，视频单独一条消息发（QQ 的 Markdown 放不下视频） |
+| 翻译 | 正文、引用、被回复原推都翻，页脚标 `由X自动翻译` |
+
+**工程上的几个特点**：
 
 - **零依赖**：只用 Node.js 内置模块，clone 下来直接跑，不需要 `npm install`
 - **零第三方服务**：用自己账号的 cookie 直连 X，不需要 RSS 服务、不需要付费 API
@@ -40,6 +55,7 @@
   - [想改某个地方](#想改某个地方)
   - [测试与调试技巧](#测试与调试技巧)
 - [设计取舍](#设计取舍)
+- [已知限制](#已知限制)
 - [FAQ / 排错](#faq--排错)
 - [合规与免责](#合规与免责)
 - [License](#license)
@@ -48,11 +64,11 @@
 
 ## 效果
 
-一次转推的卡片长这样（省略了图片链接）：
+一条「转推 + 引用 + 配图 + 翻译」的卡片长这样（图片链接已省略）：
 
 ```
 ## **⇄ X账号A 已转帖**
-> 转帖于 2026-10-28 14:38
+> 转帖于 2026-10-28 20:06
 
 # ![头像] **X账号A** ![认证]
 
@@ -60,11 +76,15 @@
 
 这里可能是多行文本，例如时间、地点等。
 
-![配图 #600px #450px](…)
+![推文配图 #600px #450px](…)
+> 伊藤百花 及另外4人
 
 > ## X账号B
 >
 > 这是被引用 / 被转帖的推文的正文。
+>
+> ![引用配图 #520px #390px](…)
+> 来自 fanicon.net
 >
 > 2026-10-27 21:46｜[查看原帖 ↗](…)
 
@@ -72,8 +92,11 @@
 2026-10-28 20:06｜[查看原帖 ↗](…)
 ```
 
-层级约定：主推账号名用 `#`（最大字号 + 加粗），转推横幅和引用作者用 `##`，
-被引用的内容用 `>` 缩进；页脚时间是**推文本身的发布时间**，和 X 页面上一致。
+层级约定：
+
+- 主推账号名用 `#`（最大字号 + 加粗），转推横幅和引用作者用 `##`；
+- 被引用 / 被回复的内容整块用 `>` 缩进，块内的配图、人物标记、卡片来源也跟着缩进；
+- 页脚时间是**推文本身的发布时间**，和 X 页面上显示的一致；转推不改变它。
 
 ---
 
@@ -120,11 +143,10 @@ node src/main.js run           # Windows 也可以直接双击 start.cmd
 自检正常时输出大致如下：
 
 ```
-[1/4] 检查 QQ 凭据 ... OK
-[2/4] 检查推文源 ... OK，拿到 2 条候选推文
-[3/4] 检查群名单 ... OK，1 个群
+[1/3] 检查 QQ 凭据 ... OK
+[2/3] 检查推文源 ... OK，拿到 2 条候选推文
+[3/3] 检查群名单 ... OK，1 个群
 基础检查通过。
-开始轮询 1 个账号，间隔 300s（随机抖动 0~60s）
 ```
 
 然后把机器人拉进群，**@ 机器人** 发 `/订阅 <账号key>`。它会先推一条该账号的最新推文，
@@ -166,13 +188,19 @@ queryId: UserTweets=… UserByScreenName=…
 | `stop.cmd`（Windows） | 按 PID 停止，并写入 `.stop` 标记，避免被自动重启拉起 |
 | `autostart.vbs` | 静默启动，放进「启动」文件夹即可登录自启 |
 
-如果要用本地代理下载 X 媒体：
+如果要用本地代理拉 X：
 
 ```bat
-set CLASH_EXE=C:\path\to\clash.exe
+rem 1. 用你的 Clash 订阅生成一份只监听本机 17899 的配置
 node scripts\prepare-local-proxy.mjs C:\path\to\profile.yml 17899
-rem 之后 start.cmd 会自动拉起这个只监听本机的代理
+
+rem 2. 告诉 start.cmd 用哪个 clash 可执行文件（不设就用 ClashForWindows 的默认路径）
+set CLASH_EXE=C:\path\to\clash-win64.exe
 ```
+
+`start.cmd` 的处理顺序：没有 `.proxy/config.yaml` 就先跑上面的脚本生成；
+17899 没在监听就用 `CLASH_EXE` 把这份配置拉起来（窗口隐藏）。脚本只改端口和局域网开关，
+不动订阅内容；也支持 `CLASH_PROFILE` / `PROXY_PORT` / `PROXY_CONTROLLER_PORT` 环境变量。
 
 ### 用 AI Agent 部署
 
@@ -216,7 +244,7 @@ rem 之后 start.cmd 会自动拉起这个只监听本机的代理
 
 ### 上线检查清单
 
-- [ ] `node src/main.js doctor` 四项全绿
+- [ ] `node src/main.js doctor` 三项全绿（凭据 / 推文源 / 群名单）
 - [ ] `node src/main.js xprobe` 能拿到最新推文
 - [ ] 群里 `/订阅` 有回复，并且收到了一条最新推文
 - [ ] 群主已开启「主动推送消息」
@@ -248,6 +276,9 @@ rem 之后 start.cmd 会自动拉起这个只监听本机的代理
 | `forward.maxPerRun` | `5` | 每轮最多推送几条 |
 | `forward.maxPushAgeHours` | `6` | 超过这个小时数的推文不再补发（`0` 表示关闭） |
 | `forward.maxImages` | `6` | 单条最多发几张图 |
+| `forward.sendImages` | `true` | 关掉就只发文字卡片，完全不碰媒体 |
+| `forward.quote` | `true` | 引用推文是否一起渲染（关掉只保留主推） |
+| `forward.verifiedBadge` | `true` | 是否显示蓝 V 徽章 |
 | `forward.imageMode` | `auto` | 图片放哪：`inline` 内嵌进卡片 / `message` 单独发图片消息 / `media` 图文同条（文字+首图一个气泡，纯文本） / `auto` 素材库宽裕时内嵌、快满了自动改成单独发（推荐） |
 | `forward.mediaInlineUntil` | `92` | `auto` 模式的切换线：素材库少于这个张数才内嵌 |
 | `forward.headerCacheHours` | `12` | 头像 / 徽章素材的缓存时长，过期后重新上传（防止素材被淘汰后链接失效） |
@@ -257,7 +288,7 @@ rem 之后 start.cmd 会自动拉起这个只监听本机的代理
 | `forward.mediaKeep` | `60` | 回收时删到多少张为止（从最旧的开始删） |
 | `forward.maxMarkdownChars` | `4000` | 单条 Markdown 上限 |
 | `forward.style` | `markdown` | `markdown` / `text` / `media` / `ark` |
-| `forward.markdownImage` | `false` | 老配置项，等价于 `imageMode: "inline"`，保留兼容 |
+| `forward.markdownImage` | — | 老配置项，等价于 `imageMode: "inline"`；新配置直接用 `imageMode`，不需要它 |
 | `forward.perMinute` / `perDay` | `15` / `200` | 每个会话的发送频率限制 |
 | `forward.timeZone` | `Asia/Shanghai` | 卡片时间使用的时区 |
 | `accounts[]` | — | 账号列表，见下 |
@@ -348,7 +379,9 @@ node src/main.js media             # 素材库状态：张数 / 缓存是否过�
 node src/main.js media --clean     # 图片又发不出去时，把素材库回收到 mediaKeep 以下
 node src/main.js xprobe            # 验证 X cookie，打印最新推文
 node src/main.js groups            # 查看已登记会话与订阅关系
+node src/main.js groups enable <openid>    # 打开某个会话的推送
 node src/main.js groups disable <openid>   # 关掉某个会话的推送
+node src/main.js groups remove <openid>    # 从名单里删掉
 node src/main.js watch             # 只监听事件，自动登记机器人所在的群
 
 # 手动试发（调样式、排查群权限）
@@ -364,20 +397,20 @@ node src/main.js send-tweet <推文链接> [--group <openid>]
 
 ```
 src/
-├─ main.js      CLI 入口 + 指令处理（订阅 / 退订 / 翻译 / 回复 / 转贴）
-├─ poller.js    轮询调度：拉取 → 过滤 → 去重 → 逐会话投递
-├─ xgraphql.js  X 客户端：cookie、queryId 自动刷新、UserTweets、翻译
+├─ main.js      CLI 入口 + 指令处理（订阅 / 退订 / 最新 / 转推 / 翻译 / 回复 / 转贴）
+├─ poller.js    轮询调度：拉取 → 过滤 → 去重 → 逐会话投递；翻译、人物标记、外链卡片都在这里汇总
+├─ xgraphql.js  X 客户端：cookie、queryId 自动刷新、UserTweets / UserReplies / TweetResultByRestId、翻译
 ├─ tweet.js     推文对象规范化、去重键、行首 @ 剥离
-├─ qq.js        QQ OpenAPI：token / 发送 / 素材上传 / 分片上传 / 媒体
+├─ qq.js        QQ OpenAPI：token / 发送 / 素材上传 / 分片上传 / 媒体 / 素材回收
 ├─ gateway.js   WebSocket 网关：群事件 + 私聊事件
-├─ format.js    Markdown 卡片渲染（转推 / 回复 / 引用 / 视频提示 / 翻译标记）
+├─ format.js    Markdown 卡片渲染（转推 / 回复 / 引用 / 人物标记 / 卡片来源 / 视频提示 / 翻译标记）
 ├─ fx.js        FxTwitter 详情：引用、真实图片尺寸、视频多档
 ├─ store.js     state.json：会话、已读、开关、健康状态
-├─ http.js      请求封装（代理、超时、大小上限）
-├─ commands.js  指令关键词匹配
+├─ http.js      请求封装（代理、超时、大小上限、瞬断自动重试）
+├─ commands.js  指令关键词匹配、推文 id 解析
 └─ util.js      日志（控制台 + 按天文件）、时间格式化、原子写
 
-test/pipeline.test.js   端到端单测（mock QQ 服务 + 本地推文源）
+test/pipeline.test.js   单测（mock QQ 服务 + 本地推文源）
 assets/verified.png     蓝 V 占位图
 scripts/                代理准备、网关探测等开发脚本
 ```
@@ -441,7 +474,7 @@ Gateway(WS)                    Poller                       QQ OpenAPI
 ### 测试与调试技巧
 
 ```bash
-node test/pipeline.test.js          # 11 个用例：渲染、过滤、去重、限频、端到端
+node test/pipeline.test.js          # 25 个用例：渲染、过滤、去重、限频、素材回收、卡片元素、端到端
 node src/main.js once --dry-run     # 真跑一轮但只打印，改样式时最常用
 node src/main.js xprobe             # 只验证 X 侧
 ```
@@ -469,6 +502,11 @@ node src/main.js xprobe             # 只验证 X 侧
 
 **为什么正文行首要插零宽空格？** QQ 会把行首的 `#` 当标题、`>` 当引用，
 插一个不可见字符就能阻断语法，不影响阅读。
+
+**为什么 `#标签` 不翻译？** X 自己的翻译接口不翻标签 —— 实测换过 16 种
+`translationSource`、8 种语言码、Android/iOS 的 UA，`#夢のポップスター公演` 都原样返回
+（标签在它眼里是 entity，不进翻译）。X 客户端里能翻，走的是另一套没开放的后端。
+本项目坚持不接第三方翻译，所以标签保留原文；正文、引用、被回复原推都会翻。
 
 **图片下面那行「某某 及另外 N 人」是哪来的？** X 的图片可以标记人物，
 数据在 `extended_entities.media[].features.all.tags[]`（每个 tag 带 `name` / `screen_name` / `user_id`）。
@@ -538,23 +576,40 @@ fxtwitter 不返回这个字段，所以：
 
 ---
 
+## 已知限制
+
+这些是平台本身的约束，不是 bug，写在这里免得反复排查：
+
+| 限制 | 说明 |
+| --- | --- |
+| 素材库 **100 张** | QQ 的硬上限，超了连头像都传不上去（`40035007`）。本程序会自动回收最旧的，但**历史消息里的图会随回收失效** |
+| `#标签` 不翻译 | X 的翻译接口不翻标签，又不接第三方，所以保留原文（见[设计取舍](#设计取舍)） |
+| 被动回复最多 5 条 | `/最新`、`/转推` 走被动回复，卡片占 1 条，所以最多再跟 4 张图 / 视频；超出的内容不会发 |
+| 视频 ≤ 100MB | 超过会自动降码率再试；全都不行就只发文字卡片 |
+| 卡片里不能放视频 | QQ 的 Markdown 不支持视频，视频永远是单独一条消息 |
+| `pbs.twimg.com` 客户端连不上 | 必须经素材库转存；直连公网图片 URL 在 QQ 客户端里加载不出来 |
+| cookie 会过期 | 几周到几个月不等，日志报 `401` 时重新复制一次 |
+
+---
+
 ## FAQ / 排错
 
 | 现象 | 原因 / 处理 |
 | --- | --- |
 | `X 拒绝了请求（401）` | cookie 过期，重新复制 `auth_token` |
 | `40034105 主动消息失败, 无权限` | 群主没开「主动推送消息」 |
-| 图片发不出来 | 检查代理是否可用；失败时会只发文字 |
-| 图片一直显示「加载中」/「加载失败」 | 该图片用的素材链接已被回收。素材库上限 100 张，删除后链接永久失效。升级到带 `mediaCacheHours` 的版本即可（缓存过期会自动重传），用 `node src/main.js media` 可以看素材库是否已经满了 |
-| 图片和头像突然全没了（日志里有 `40035007 markdown image quota exceeded`） | 素材库满 100 张了，`prepare` 直接拒绝。新版会在配额爆掉时自动回收旧素材再重传；临时想看库容就运行 `node src/main.js media`，想一次腾干净就 `node src/main.js media --clean` |
-| 老消息里的图突然不见了 | 同上，素材被淘汰后老消息里的图就没了，这是平台限制，无法恢复 |
-| 视频没发 | 超过 100MB 会自动降档；看日志里的 `视频: …` |
+| `账号 xxx 本轮拉取失败` + `ECONNRESET` / `TLS` | 代理抖动。程序对 GET 会自动重试 2 次；只失败一轮会在下轮自己补上，连续失败才需要查网络 |
+| 图片发不出来 | 检查代理是否可用；失败时会只发文字卡片 |
+| 图片一直「加载中」/「加载失败」 | 该图片引用的素材已不在库里。程序发消息前会核对缓存、发现死链就重传；用 `node src/main.js media` 看库容 |
+| 图片和头像突然全没了（日志有 `40035007`） | 素材库满 100 张。程序会自动回收旧素材再重传；想一次腾干净用 `node src/main.js media --clean` |
+| 老消息里的图突然不见了 | 素材被回收了，平台限制，无法恢复 |
+| 视频没发 | 超过 100MB 会自动降码率；看日志里的 `视频: …` |
+| 卡片里没有引用块 | 引用推文获取失败（X 限流或推文已删），日志会有 `准备引用推文失败` |
 | 重复推送 | 转推的转帖 id 与原推 id 已双向标记；若仍出现，检查 `state.json` 是否被并发写 |
 | `/订阅` 没反应 | 看日志有没有 `收到指令`；没有则是网关事件没进来（intents / 机器人能力） |
 | 私聊发指令没反应 | 机器人后台没开「单聊」能力；看日志有没有 `C2C_MESSAGE_CREATE` |
 | 服务好像停了 | `node src/main.js status` 看「上次轮询」是否在 10 分钟内 |
-| `Cannot access 'norm' before initialization` | 旧版本的已知 bug，更新到最新代码 |
-| 日志找不到 | `logs/run-YYYY-MM-DD.log`，按天分文件 |
+| 日志找不到 | `logs/run-YYYY-MM-DD.log`，按天分文件，跨天也会自动切换 |
 
 ---
 
@@ -573,6 +628,6 @@ fxtwitter 不返回这个字段，所以：
 
 ## License
 
-[MIT](LICENSE) © 2026 LingGuangBot-QQ contributors
+[MIT](LICENSE) © 2026 Max凌光 (LingGuangBot-QQ)
 
 `assets/verified.png` 仅作蓝 V 徽章占位，如涉及商标问题请替换或删除。
