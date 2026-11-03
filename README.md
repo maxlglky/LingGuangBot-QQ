@@ -299,7 +299,7 @@ set CLASH_EXE=C:\path\to\clash-win64.exe
 {
   "key": "xaccount1",                    // 群里用 /订阅 xaccount1
   "handle": "example_account",
-  "displayName": "X账号1",
+  "displayName": "X账号1",               // 卡片上显示的账号名
   "provider": "xcookie",                // 目前有 xcookie / file(调试用)
   "userId": "0000000000000000000",      // 数字 ID，留空会自动查询
   "includeReplies": true,
@@ -307,6 +307,16 @@ set CLASH_EXE=C:\path\to\clash-win64.exe
   "maxAgeHours": 24
 }
 ```
+
+#### 再加一个账号
+
+1. 在 `accounts` 数组里追加一项，`key` 取个好记的短名字（群里用它订阅），
+   `handle` 填 X 的 `@` 后面的名字，`userId` 可以先留空；
+2. 重启服务（配置只在启动时读一次）；
+3. 在群里 @ 机器人发 `/订阅 <key>`，它会先推一条该账号的最新推文。
+
+> `userId` 留空时第一次拉取会自动查询并写回 `state.xgraphql.json`，不影响使用；
+> 想指定头像就用 `avatarUrl`，不填则用 X 上的头像。
 
 ---
 

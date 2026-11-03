@@ -15,7 +15,7 @@ import {
   resolveAccount,
 } from '../src/commands.js';
 import { dedupeKey, toTweet } from '../src/tweet.js';
-import { pickOwnAvatar, extractPhotoTags, extractCardLink } from '../src/xgraphql.js';
+import { pickOwnAvatar, extractPhotoTags, extractCardLink, userInfo } from '../src/xgraphql.js';
 import { formatTweet, formatTweetMarkdown } from '../src/format.js';
 import { request } from '../src/http.js';
 import { Poller } from '../src/poller.js';
@@ -691,6 +691,28 @@ test('引用里的外链视频会单独发一条视频消息', async () => {
   } finally {
     server.close();
   }
+});
+
+test('用户信息兼容 X 的新老两种 GraphQL 结构', () => {
+  // 老结构：都在 legacy 里
+  assert.deepEqual(
+    userInfo({
+      legacy: { name: 'A', screen_name: 'a', profile_image_url_https: 'https://x/a.jpg' },
+    }),
+    { name: 'A', screenName: 'a', avatar: 'https://x/a.jpg', verified: false },
+  );
+  // 新结构：name/screen_name 挪到 core，头像在 avatar.image_url
+  const next = userInfo({
+    core: { name: '倉知玲鳳（Reo Kurachi）', screen_name: 'kurachireo' },
+    avatar: { image_url: 'https://x/reo.jpg' },
+    is_blue_verified: true,
+  });
+  assert.equal(next.name, '倉知玲鳳（Reo Kurachi）');
+  assert.equal(next.screenName, 'kurachireo');
+  assert.equal(next.avatar, 'https://x/reo.jpg');
+  assert.equal(next.verified, true);
+  // 两种都没有也不该抛
+  assert.deepEqual(userInfo({}), { name: '', screenName: '', avatar: '', verified: false });
 });
 
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {

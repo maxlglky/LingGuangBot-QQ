@@ -475,6 +475,22 @@ export function extractCardLink(result) {
   };
 }
 
+/**
+ * 取用户信息，兼容 X 的两种返回结构：
+ * - 老结构：`legacy.name` / `legacy.screen_name` / `legacy.profile_image_url_https`
+ * - 新结构：`core.name` / `core.screen_name` / `avatar.image_url`（2026 年起逐步切换）
+ */
+export function userInfo(userResult = {}) {
+  const legacy = userResult.legacy || {};
+  const core = userResult.core || {};
+  return {
+    name: legacy.name || core.name || '',
+    screenName: legacy.screen_name || core.screen_name || '',
+    avatar: userResult.avatar?.image_url || legacy.profile_image_url_https || '',
+    verified: Boolean(userResult.is_blue_verified || legacy.verified),
+  };
+}
+
 /** 把 GraphQL 的推文节点转成我们内部统一的 items。 */
 export function xTweetToItem(node, screenName) {
   if (!node) return null;
@@ -483,9 +499,8 @@ export function xTweetToItem(node, screenName) {
   if (tweet.__typename === 'TweetTombstone') return null;
 
   const legacy = tweet.legacy || {};
-  const userResult = tweet.core?.user_results?.result || {};
-  const userLegacy = userResult.legacy || {};
-  const screen = userLegacy.screen_name || screenName;
+  const user = userInfo(tweet.core?.user_results?.result || {});
+  const screen = user.screenName || screenName;
 
   const idStr = tweet.rest_id || legacy.id_str;
   if (!idStr) return null;
@@ -506,14 +521,14 @@ export function xTweetToItem(node, screenName) {
     id: `x:${idStr}`,
     title: legacy.full_text || '',
     link: `https://x.com/${screen}/status/${idStr}`,
-    author: userLegacy.name || '',
+    author: user.name || '',
     published: createdAt.toISOString(),
     contentHtml: '',
     text: legacy.full_text || '',
     images,
     photoTags,
     raw: JSON.stringify({ id_str: idStr, created_at: legacy.created_at }),
-    avatar: userLegacy.profile_image_url_https || '',
+    avatar: user.avatar || '',
     isRetweet: Boolean(legacy.retweeted_status_result),
     // 回复：GraphQL 用 in_reply_to_* 表示，正文里不带「Replying to」
     isReply: Boolean(legacy.in_reply_to_status_id_str || legacy.in_reply_to_screen_name),
@@ -589,10 +604,7 @@ export async function fetchXCookie(cfg, { request, logger, stateFile, meta }) {
 export function pickOwnAvatar(json, items = [], handle = '') {
   const result = json?.data?.user?.result || {};
   const own =
-    result.avatar?.image_url ||
-    result.legacy?.profile_image_url_https ||
-    result.core?.user_results?.result?.legacy?.profile_image_url_https ||
-    '';
+    userInfo(result).avatar || userInfo(result.core?.user_results?.result || {}).avatar || '';
   if (own) return own;
   const name = String(handle || '').replace(/^@/, '');
   if (!name) return '';
