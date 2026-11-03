@@ -277,6 +277,7 @@ set CLASH_EXE=C:\path\to\clash-win64.exe
 | `forward.maxPushAgeHours` | `6` | 超过这个小时数的推文不再补发（`0` 表示关闭） |
 | `forward.maxImages` | `6` | 单条最多发几张图 |
 | `forward.sendImages` | `true` | 关掉就只发文字卡片，完全不碰媒体 |
+| `forward.originalImage` | `false` | 图片用 X 上的**原图**（`?name=orig`）而不是默认压缩版。实测同一张图：默认 `900×1200 / 234KB`，原图 `1536×2048 / 548KB`。代价是流量和发送耗时变高 |
 | `forward.quote` | `true` | 引用推文是否一起渲染（关掉只保留主推） |
 | `forward.verifiedBadge` | `true` | 是否显示蓝 V 徽章 |
 | `forward.imageMode` | `auto` | 图片放哪：`inline` 内嵌进卡片 / `message` 单独发图片消息 / `media` 图文同条（文字+首图一个气泡，纯文本） / `auto` 素材库宽裕时内嵌、快满了自动改成单独发（推荐） |
@@ -558,6 +559,13 @@ fxtwitter 不返回这个字段，所以：
 （平台会下载转存），但**腾讯的服务器连不到 `pbs.twimg.com`** —— 实测：
 同一张 Markdown 里放腾讯 COS 的公共图能正常显示，放 X 图床的图（带不带参数都一样）
 就加载不出来。所以才要先把图传到「素材管理」，拿 `qqbot-media://` 引用。
+
+**图片画质是怎么定的？** X 的图床支持 `?name=` 参数控制尺寸，默认返回的是压缩版
+（实测同一张图：默认 `900×1200 / 234KB`，`?name=orig` 是 `1536×2048 / 548KB`）。
+fxtwitter 给的链接本身就带 `name=orig`，但走 GraphQL 兜底时拿到的是不带参数的压缩版。
+打开 `forward.originalImage` 后会统一改写成 `?name=orig`；原图超过平台 10MB 限制时，
+自动退到 `4096x4096` → `large` → `medium` 再试。
+上传到素材库的内容我们验证过是**字节一致的原图**（没有被平台二次压缩）。
 
 素材库的关键限制（都来自[官方文档](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/material-management.html)）：
 

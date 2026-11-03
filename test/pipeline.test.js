@@ -16,6 +16,7 @@ import {
 } from '../src/commands.js';
 import { dedupeKey, toTweet } from '../src/tweet.js';
 import { pickOwnAvatar, extractPhotoTags, extractCardLink, userInfo } from '../src/xgraphql.js';
+import { originalImageUrl } from '../src/util.js';
 import { formatTweet, formatTweetMarkdown } from '../src/format.js';
 import { request } from '../src/http.js';
 import { Poller } from '../src/poller.js';
@@ -713,6 +714,46 @@ test('用户信息兼容 X 的新老两种 GraphQL 结构', () => {
   assert.equal(next.verified, true);
   // 两种都没有也不该抛
   assert.deepEqual(userInfo({}), { name: '', screenName: '', avatar: '', verified: false });
+});
+
+test('原图开关：打开后图片走 ?name=orig，关掉保持原样', () => {
+  // URL 改写
+  assert.equal(
+    originalImageUrl('https://pbs.twimg.com/media/a.jpg'),
+    'https://pbs.twimg.com/media/a.jpg?name=orig',
+  );
+  assert.equal(
+    originalImageUrl('https://pbs.twimg.com/media/a.jpg?name=small'),
+    'https://pbs.twimg.com/media/a.jpg?name=orig',
+  );
+  assert.equal(
+    originalImageUrl('https://pbs.twimg.com/media/a.jpg:small'),
+    'https://pbs.twimg.com/media/a.jpg:orig',
+  );
+  assert.equal(
+    originalImageUrl('https://example.com/a.jpg?name=small'),
+    'https://example.com/a.jpg?name=small',
+    '非 pbs 图床不动',
+  );
+
+  const poller = new Poller({ cfg: baseConfig(), qq: null, store: null, logger: captureLogger() });
+  const detail = { photos: [{ url: 'https://pbs.twimg.com/media/a.jpg' }] };
+
+  const off = poller.buildPhotos(detail, {}, {}, { forward: { originalImage: false } });
+  assert.equal(off.photos[0].url, 'https://pbs.twimg.com/media/a.jpg', '默认不换原图');
+
+  const on = poller.buildPhotos(detail, {}, {}, { forward: { originalImage: true } });
+  assert.equal(on.photos[0].url, 'https://pbs.twimg.com/media/a.jpg?name=orig');
+
+  // 引用推文的图片也走同一个开关
+  assert.equal(
+    poller.quotePhotosFor(
+      { photos: [{ url: 'https://pbs.twimg.com/media/b.jpg' }] },
+      {},
+      { forward: { originalImage: true } },
+    )[0].url,
+    'https://pbs.twimg.com/media/b.jpg?name=orig',
+  );
 });
 
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {

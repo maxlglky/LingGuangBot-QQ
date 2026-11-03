@@ -67,6 +67,8 @@ const DEFAULTS = {
     mediaCacheHours: 6,
     mediaPruneAt: 90,
     mediaKeep: 60,
+    // 图片用 X 上的原图（?name=orig）而不是默认的压缩版；图更大、更清晰，也占更多带宽
+    originalImage: false,
     perMinute: 15,
     perDay: 200,
     timeZone: 'Asia/Shanghai',

@@ -223,8 +223,37 @@ export function imageDimensions(buffer) {
   return null;
 }
 
-/** 解析 "1.5m" / "30s" / "2h" 这类时长；纯数字按秒处理。 */
-export function parseDuration(value, fallbackMs) {
+/**
+ * 把 X 图床的图片 URL 改成指定尺寸。
+ * 支持两种写法：`...jpg?name=small`（新）和 `...jpg:small`（老），非 pbs 图床原样返回。
+ */
+export function imageVariantUrl(url, name = 'orig') {
+  const src = String(url || '');
+  if (!/^https?:\/\/pbs\.twimg\.com\//i.test(src)) return src;
+
+  // 老式 :small / :orig 后缀
+  const legacy = src.match(/^(.*\.(?:jpg|jpeg|png|gif|webp)):(\w+)$/i);
+  if (legacy) return `${legacy[1]}:${name}`;
+
+  const [base, ...rest] = src.split('?');
+  const params = new URLSearchParams(rest.join('?'));
+  params.set('name', name);
+  return `${base}?${params.toString()}`;
+}
+
+/** 原图（X 上能拿到的最高画质）。 */
+export function originalImageUrl(url) {
+  return imageVariantUrl(url, 'orig');
+}
+
+/** 图床 URL 的备选尺寸，原图太大（>10MB）时依次退让。 */
+export function imageFallbackUrls(url) {
+  const src = String(url || '');
+  if (!/^https?:\/\/pbs\.twimg\.com\//i.test(src)) return [];
+  return ['4096x4096', 'large', 'medium'].map((n) => imageVariantUrl(src, n));
+}
+
+/** 解析 "1.5m" / "30s" / "2h" 这类时长；纯数字按秒处理。 */export function parseDuration(value, fallbackMs) {
   if (value === undefined || value === null) return fallbackMs;
   if (typeof value === 'number') return value * 1000;
   const m = String(value).trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)?$/i);

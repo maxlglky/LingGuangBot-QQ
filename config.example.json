@@ -34,6 +34,7 @@
     "mediaCacheHours": 6,
     "mediaPruneAt": 90,
     "mediaKeep": 60,
+    "originalImage": false,
     "perMinute": 15,
     "perDay": 200,
     "timeZone": "Asia/Shanghai"

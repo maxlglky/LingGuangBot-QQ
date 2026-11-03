@@ -3,7 +3,7 @@ import { dedupeKey, toTweet } from './tweet.js';
 import { XCookieClient, extractCardLink, extractPhotoTags, fetchXCookie } from './xgraphql.js';
 import { fetchTweetDetail, resolveRepost } from './fx.js';
 import { buildArkCard, formatTweet, formatTweetMarkdown } from './format.js';
-import { sleep } from './util.js';
+import { originalImageUrl, sleep } from './util.js';
 
 /**
  * 轮询多个账号的推文源 → 去重 → 推送给「订阅了该账号」的群。
@@ -108,21 +108,34 @@ export class Poller {
   }
 
   /** 组装要发出去的图片：推文自带图片优先，没有就用「外链卡片」的预览图。 */
-  buildPhotos(detail, tweet, extras) {
+  buildPhotos(detail, tweet, extras, acfg) {
     const own = detail?.photos?.length
       ? detail.photos
       : (tweet?.images || []).map((url) => ({ url }));
-    if (own.length) return { photos: own, cardSource: '' };
+    if (own.length) return { photos: this.preferOriginal(own, acfg), cardSource: '' };
     const card = extras?.card;
     // player 卡片：视频会单独发，这里就不再发封面图
     if (card?.videoUrl) return { photos: [], cardSource: card.domain || '' };
     if (card?.imageUrl) {
       return {
-        photos: [{ url: card.imageUrl, width: card.width, height: card.height }],
+        photos: this.preferOriginal(
+          [{ url: card.imageUrl, width: card.width, height: card.height }],
+          acfg,
+        ),
         cardSource: card.domain || '',
       };
     }
-    return { photos: own, cardSource: '' };
+    return { photos: [], cardSource: '' };
+  }
+
+  /**
+   * 要不要用原图。X 时间线/详情里给的图片 URL 默认是压缩过的，
+   * `?name=orig` 才是最高画质；打开 `forward.originalImage` 后统一换成原图。
+   */
+  preferOriginal(photos, acfg) {
+    if (!Array.isArray(photos)) return [];
+    if (acfg?.forward?.originalImage !== true) return photos;
+    return photos.map((p) => ({ ...p, url: originalImageUrl(p.url) }));
   }
 
   /** 视频：推文自带视频优先，没有就用外链卡片里的 player 视频。 */
@@ -135,9 +148,9 @@ export class Poller {
   }
 
   /** 引用推文要单独发出去的图片（message 模式）：自带图片优先，没有就用卡片图。 */
-  quotePhotosFor(quote, extras) {
+  quotePhotosFor(quote, extras, acfg) {
     if (!quote) return [];
-    return this.buildPhotos(quote, null, extras).photos;
+    return this.buildPhotos(quote, null, extras, acfg).photos;
   }
 
   /** 主推文图片的人物标记：时间线里带了就直接用，没有就按 id 再查一次。 */
@@ -378,7 +391,7 @@ export class Poller {
       let anySuccess = false;
       let header = null;
       const extras = await this.fetchTweetExtras(acfg, detail?.id || statusId);
-      const { photos, cardSource } = this.buildPhotos(detail, tweet, extras);
+      const { photos, cardSource } = this.buildPhotos(detail, tweet, extras, acfg);
       const videos = this.videosWithCard(detail, extras);
 
       if (acfg.forward.style === 'markdown') {
@@ -401,7 +414,7 @@ export class Poller {
       if (detail?.quote && acfg.forward.quote !== false) {
         try {
           const quoteExtras = await this.fetchTweetExtras(acfg, detail.quote.id);
-          quotePhotos = this.quotePhotosFor(detail.quote, quoteExtras);
+          quotePhotos = this.quotePhotosFor(detail.quote, quoteExtras, acfg);
           quoteBlock = await this.qq.prepareQuote(
             {
               ...detail.quote,
@@ -601,7 +614,7 @@ export class Poller {
     if (detail?.quote && acfg.forward.quote !== false) {
       try {
         const quoteExtras = await this.fetchTweetExtras(acfg, detail.quote.id);
-        quotePhotos = this.quotePhotosFor(detail.quote, quoteExtras);
+        quotePhotos = this.quotePhotosFor(detail.quote, quoteExtras, acfg);
         quoteBlock = await this.qq.prepareQuote(
           {
             ...detail.quote,
@@ -618,7 +631,7 @@ export class Poller {
     }
 
     const extras = await this.fetchTweetExtras(acfg, detail?.id || statusId);
-    const { photos, cardSource } = this.buildPhotos(detail, tweet, extras);
+    const { photos, cardSource } = this.buildPhotos(detail, tweet, extras, acfg);
 
     const replyContext = displayTweet?.isReply
       ? await this.buildReplyContext(displayTweet, acfg)

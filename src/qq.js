@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { request, requestJson } from './http.js';
-import { imageDimensions, sleep } from './util.js';
+import { imageDimensions, imageFallbackUrls, sleep } from './util.js';
 
 export class QQApiError extends Error {
   constructor(status, payload) {
@@ -636,8 +636,14 @@ export class QQClient {
   /** 先把图片下载到本地（可走代理），再分片上传——绕开 QQ 侧下载不了的情况。 */
   async downloadImage(url) {
     const proxy = this.cfg.net?.proxy || undefined;
-    const candidates = [url];
-    if (url.includes('?')) candidates.push(url.split('?')[0]);
+    const candidates = [];
+    const push = (u) => {
+      if (u && !candidates.includes(u)) candidates.push(u);
+    };
+    push(url);
+    // 原图可能超过平台 10MB 限制，依次退到更小的尺寸再试
+    for (const alt of imageFallbackUrls(url)) push(alt);
+    if (url.includes('?')) push(url.split('?')[0]);
     for (const candidate of candidates) {
       try {
         const res = await request(candidate, {
