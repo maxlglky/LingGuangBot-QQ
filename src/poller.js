@@ -476,6 +476,7 @@ export class Poller {
               repost,
               name: repost ? detail?.author : undefined,
               maxImages: acfg.forward.maxImages ?? 6,
+              maxVideoMB: acfg.forward.maxVideoMB ?? 30,
               markdownBuilder: (ctx) =>
                 formatTweetMarkdown(displayTweet, acfg, {
                   ...(ctx || {}),
@@ -666,6 +667,7 @@ export class Poller {
       repost,
       name: repost ? detail?.author : undefined,
       maxImages: acfg.forward.maxImages ?? 6,
+      maxVideoMB: acfg.forward.maxVideoMB ?? 30,
       markdownBuilder: (ctx) =>
         formatTweetMarkdown(displayTweet, acfg, {
           ...(ctx || {}),

@@ -35,6 +35,7 @@
     "mediaPruneAt": 90,
     "mediaKeep": 60,
     "originalImage": false,
+    "maxVideoMB": 30,
     "perMinute": 15,
     "perDay": 200,
     "timeZone": "Asia/Shanghai"

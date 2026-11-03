@@ -633,6 +633,42 @@ export class QQClient {
     return info;
   }
 
+  /**
+   * 挑视频档位：按「码率 × 时长」估算文件大小，选**装得下的最高画质**。
+   * 官方限制：视频软限 30MB（超了会被平台降级成「文件」）、硬限 200MB。
+   * @param {{variants?:Array<{url:string,bitrate?:number}>,url?:string,duration?:number}} video
+   * @param {number} [maxMB] 接受的最大体积（MB）
+   */
+  pickVideoVariant(video, maxMB) {
+    const capMB = Number(maxMB) > 0 ? Number(maxMB) : 100;
+    const cap = capMB * 1024 * 1024;
+    const duration = Number(video?.duration) || 0;
+    const ordered = [...(video?.variants || [])]
+      .filter((v) => v?.url)
+      .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+    if (!ordered.length) {
+      return video?.url ? { url: video.url, ordered, cap, note: '' } : null;
+    }
+
+    const estimate = (v) =>
+      duration && v.bitrate ? Math.round((v.bitrate * duration) / 8) : 0;
+    const fits = ordered.find((v) => {
+      const est = estimate(v);
+      return !est || est <= cap;
+    });
+    // 都装不下就取最小的一档（仍然比超限失败好）
+    const chosen = fits || ordered[ordered.length - 1];
+
+    const res = String(chosen.url).match(/(\d{2,5})x(\d{2,5})/);
+    const size = estimate(chosen);
+    const note =
+      `${res ? res[1] + 'x' + res[2] : '未知分辨率'}` +
+      `${chosen.bitrate ? ` @${Math.round(chosen.bitrate / 1000)}kbps` : ''}` +
+      `${size ? ` ≈ ${(size / 1024 / 1024).toFixed(1)}MB` : ''}` +
+      `（上限 ${capMB}MB${fits ? '' : '，没有装得下的档，已取最小'}）`;
+    return { url: chosen.url, ordered, cap, note };
+  }
+
   /** 先把图片下载到本地（可走代理），再分片上传——绕开 QQ 侧下载不了的情况。 */
   async downloadImage(url) {
     const proxy = this.cfg.net?.proxy || undefined;
@@ -918,14 +954,16 @@ export class QQClient {
 
         // 视频：Markdown 不能内嵌，单独作为视频消息发送
         const sendVideo = async (video) => {
-          // 按码率从低到高逐个尝试，避免高码率 1080p 超出大小限制
-          // 从最高码率开始试，超限/失败再降到下一档
-          const ordered = [...(video.variants || [])].sort(
-            (a, b) => (b.bitrate || 0) - (a.bitrate || 0),
-          );
-          const urls = [...new Set([...ordered.map((v) => v.url), video.url])].filter(Boolean);
+          const pick = this.pickVideoVariant(video, opts.maxVideoMB);
+          if (!pick?.url) throw new Error('没有可用的视频地址');
+          if (pick.note) this.logger.info(`视频选档：${pick.note}`);
+          // 选中的排最前，其余按码率从高到低作为兜底
+          const urls = [
+            ...new Set([pick.url, ...pick.ordered.map((v) => v.url), video.url]),
+          ].filter(Boolean);
+          // 平台硬限制 200MB，超过就没必要再下了
           const local = await this.downloadBinary(urls, {
-            maxBytes: opts.maxVideoBytes ?? 100 * 1024 * 1024,
+            maxBytes: Math.min(Math.max(pick.cap, 100 * 1024 * 1024), 200 * 1024 * 1024),
           });
           if (!local) throw new Error('视频下载失败');
           const info = await this.uploadGroupFileBuffer(groupOpenid, local.buffer, local.name, 2);

@@ -69,6 +69,9 @@ const DEFAULTS = {
     mediaKeep: 60,
     // 图片用 X 上的原图（?name=orig）而不是默认的压缩版；图更大、更清晰，也占更多带宽
     originalImage: false,
+    // 视频按「码率 × 时长」估算体积，挑装得下的最高画质。
+    // 官方软限 30MB（超了会被降级成「文件」、不能直接播放），硬限 200MB。
+    maxVideoMB: 30,
     perMinute: 15,
     perDay: 200,
     timeZone: 'Asia/Shanghai',

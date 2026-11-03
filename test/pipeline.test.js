@@ -756,6 +756,40 @@ test('原图开关：打开后图片走 ?name=orig，关掉保持原样', () => 
   );
 });
 
+test('视频选档：按码率 × 时长估体积，挑装得下的最高画质', () => {
+  const qq = new QQClient({ ...baseConfig(), forward: {} }, captureLogger());
+  const video = {
+    duration: 755.066,
+    url: 'https://video.twimg.com/a/480x270/min.mp4',
+    variants: [
+      { bitrate: 10368000, url: 'https://video.twimg.com/1/1920x1080/hi.mp4' },
+      { bitrate: 2176000, url: 'https://video.twimg.com/1/1280x720/mid.mp4' },
+      { bitrate: 832000, url: 'https://video.twimg.com/1/640x360/low.mp4' },
+      { bitrate: 256000, url: 'https://video.twimg.com/1/480x270/min.mp4' },
+    ],
+  };
+
+  // 12.5 分钟：30MB 只能装 270p，200MB 能装 720p
+  assert.match(qq.pickVideoVariant(video, 30).url, /480x270/);
+  assert.match(qq.pickVideoVariant(video, 100).url, /640x360/);
+  assert.match(qq.pickVideoVariant(video, 200).url, /1280x720/);
+
+  // 30 秒的短片：30MB 就能上 720p
+  assert.match(qq.pickVideoVariant({ ...video, duration: 30 }, 30).url, /1280x720/);
+
+  // 一个都装不下时取最小档，而不是直接失败
+  const huge = { ...video, duration: 7200 };
+  assert.match(qq.pickVideoVariant(huge, 30).url, /480x270/);
+  assert.match(qq.pickVideoVariant(huge, 30).note, /没有装得下/);
+
+  // 只有 url、没有 variants 时也能用
+  assert.equal(
+    qq.pickVideoVariant({ url: 'https://video.twimg.com/only.mp4' }, 30).url,
+    'https://video.twimg.com/only.mp4',
+  );
+  assert.equal(qq.pickVideoVariant({}, 30), null);
+});
+
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {
   assert.equal(normalizeCommand('<@!BOT123> 订阅'), '订阅');
   assert.equal(matchKeyword('<@!BOT123> 订阅', DEFAULT_COMMANDS.enable), true);
