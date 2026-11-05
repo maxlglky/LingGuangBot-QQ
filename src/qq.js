@@ -15,6 +15,16 @@ export class QQApiError extends Error {
   }
 }
 
+/**
+ * 消息被平台判定「内容违规」的错误。
+ * 实测码是 40034006（消息内容违规），文案里也可能直接写「违规」。
+ */
+export function isViolationError(err) {
+  const code = Number(err?.code);
+  if (code === 40034006) return true;
+  return /内容违规|违规|sensitive|violat/i.test(String(err?.message || ''));
+}
+
 /** 单群发送节流：滑动窗口限每分钟，并限制每日总量。 */
 export class GroupRateLimiter {
   constructor({ perMinute = 15, perDay = 200 } = {}) {
@@ -910,8 +920,7 @@ export class QQClient {
               ].slice(0, passiveCap)
             : [];
 
-        await this.sendGroupMarkdown(
-          groupOpenid,
+        const buildCard = (extra = {}) =>
           opts.markdownBuilder({
             images,
             imageCount: mediaQueue.length,
@@ -920,15 +929,38 @@ export class QQClient {
             name: opts.name,
             repost: opts.repost || null,
             videoCount: opts.videos?.length || 0,
-          }),
-          replyExtra,
-        );
+            ...extra,
+          });
+
+        try {
+          await this.sendGroupMarkdown(groupOpenid, buildCard(), replyExtra);
+        } catch (err) {
+          // 图片被判违规时，整条卡片会被拒。这里去掉图片、留一行文字标注再发一次，
+          // 保住卡片排版，而不是直接降级成纯文本。
+          if (!isViolationError(err)) throw err;
+          const blocked = Math.max(images.length, mediaQueue.length);
+          this.logger.warn(
+            `卡片里的图片被判违规（${err.message}），去掉图片重发，保留卡片排版`,
+          );
+          await this.sendGroupMarkdown(
+            groupOpenid,
+            buildCard({ images: [], imageCount: 0, imagesBlocked: true, blockedImages: blocked }),
+            replyExtra,
+          );
+          result.errors.push('配图因内容违规无法发送，已改成文字标注');
+          result.text = true;
+          result.markdown = true;
+          result.images = 0;
+          result.imagesBlocked = blocked;
+          return result;
+        }
         result.text = true;
         result.markdown = true;
         result.images = images.length;
 
         // 卡片占了 seq = replyTo.seq，后面的图片消息要接着往后排（最多到 5）
         let seq = opts.replyTo ? (opts.replyTo.seq ?? 1) + 1 : 0;
+        let blockedImages = 0;
         const nextExtra = () => {
           if (!seq) return {};
           if (seq > 5) return null; // 被动回复最多 5 条
@@ -948,7 +980,25 @@ export class QQClient {
             await this.sendGroupMedia(groupOpenid, info, ' ', extra);
             result.images += 1;
           } catch (err) {
+            if (isViolationError(err)) {
+              // 单张图违规：跳过它，最后补一句说明，别让整条推送看起来「吞图」
+              blockedImages += 1;
+              this.logger.warn(`配图被判违规，跳过这一张：${err.message}`);
+              continue;
+            }
             result.errors.push(`图片: ${err.message}`);
+          }
+        }
+        if (blockedImages > 0) {
+          result.imagesBlocked = blockedImages;
+          result.errors.push(`${blockedImages} 张配图因内容违规无法发送`);
+          const noteExtra = nextExtra();
+          if (noteExtra) {
+            await this.sendGroupText(
+              groupOpenid,
+              `⚠️ 有 ${blockedImages} 张配图因内容违规无法发送`,
+              noteExtra,
+            ).catch(() => {});
           }
         }
 
@@ -972,11 +1022,24 @@ export class QQClient {
           result.videos = (result.videos || 0) + 1;
         };
 
+        // 视频违规时同样补一句说明，别让卡片里的「视频共 N 段」落空
+        const noteVideoBlocked = async () => {
+          result.videosBlocked = (result.videosBlocked || 0) + 1;
+          const extra = nextExtra();
+          if (!extra) return;
+          await this.sendGroupText(
+            groupOpenid,
+            '⚠️ 视频因内容违规无法发送',
+            extra,
+          ).catch(() => {});
+        };
+
         if (opts.videos && opts.videos.length) {
           try {
             await sendVideo(opts.videos[0]);
           } catch (err) {
-            result.errors.push(`视频: ${err.message}`);
+            if (isViolationError(err)) await noteVideoBlocked();
+            else result.errors.push(`视频: ${err.message}`);
           }
         }
 
@@ -985,7 +1048,8 @@ export class QQClient {
           try {
             await sendVideo(video);
           } catch (err) {
-            result.errors.push(`引用视频: ${err.message}`);
+            if (isViolationError(err)) await noteVideoBlocked();
+            else result.errors.push(`引用视频: ${err.message}`);
           }
         }
 

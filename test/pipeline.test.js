@@ -859,6 +859,122 @@ test('正文里的 @提及 和 #标签 变成可点击链接（主推 / 引用 /
   assert.match(replied, /\[#お知らせ\]\(https:\/\/x\.com\/hashtag\//);
 });
 
+test('图片违规时保留卡片排版，用文字标注代替配图', async () => {
+  const posted = [];
+  let markdownTries = 0;
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      if (req.url === '/app/getAppAccessToken') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ access_token: 't', expires_in: 7200 }));
+        return;
+      }
+      const payload = body ? JSON.parse(body) : {};
+      if (payload.msg_type === 2) {
+        markdownTries += 1;
+        if (markdownTries === 1) {
+          res.writeHead(400, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ code: 40034006, message: '消息内容违规' }));
+          return;
+        }
+        posted.push(payload.markdown.content);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ id: 'm1' }));
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ id: 'm2' }));
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+
+  try {
+    const cfg = baseConfig({
+      qq: { apiBase: `http://127.0.0.1:${port}`, tokenBase: `http://127.0.0.1:${port}` },
+    });
+    const qq = new QQClient(cfg, captureLogger());
+    qq.prepareInlineImages = async (photos) =>
+      photos.map((p) => ({ url: `qqbot-media://image/v1/${String(p.url).split('/').pop()}`, width: 600, height: 400 }));
+
+    const result = await qq.deliver('G', '文本兜底', [], {
+      sendImages: true,
+      style: 'markdown',
+      markdownImage: true,
+      photos: [{ url: 'https://pbs.twimg.com/media/a.jpg' }],
+      markdownBuilder: (ctx) =>
+        `images=${ctx.images.length} blocked=${ctx.imagesBlocked ? 'yes' : 'no'} n=${ctx.blockedImages || 0}`,
+    });
+
+    assert.equal(result.markdown, true, '仍然是一张卡片，而不是纯文本');
+    assert.equal(result.imagesBlocked, 1);
+    assert.equal(markdownTries, 2, '先带图发一次，被拒后去掉图再发一次');
+    assert.match(posted[0], /images=0 blocked=yes n=1/, '第二次的卡片里没有图，但有文字标注');
+  } finally {
+    server.close();
+  }
+});
+
+test('单独发的图片被判违规时，补一句文字说明而不是静默吞掉', async () => {
+  const texts = [];
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      if (req.url === '/app/getAppAccessToken') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ access_token: 't', expires_in: 7200 }));
+        return;
+      }
+      const payload = body ? JSON.parse(body) : {};
+      if (payload.msg_type === 2) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ id: 'card' }));
+        return;
+      }
+      if (payload.msg_type === 7) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ code: 40034006, message: '消息内容违规' }));
+        return;
+      }
+      if (payload.msg_type === 0) texts.push(payload.content);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ id: 'x' }));
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+
+  try {
+    const cfg = baseConfig({
+      qq: { apiBase: `http://127.0.0.1:${port}`, tokenBase: `http://127.0.0.1:${port}` },
+    });
+    const qq = new QQClient(cfg, captureLogger());
+    qq.downloadImage = async () => ({ buffer: Buffer.from('img'), name: 'a.jpg' });
+    qq.uploadGroupImageBuffer = async () => 'FILE_INFO';
+
+    const result = await qq.deliver('G', '文本', [], {
+      sendImages: true,
+      style: 'markdown',
+      markdownImage: false,
+      photos: [{ url: 'https://pbs.twimg.com/media/a.jpg' }],
+      markdownBuilder: (ctx) => `images=${ctx.imageCount}`,
+    });
+
+    assert.equal(result.markdown, true);
+    assert.equal(result.images, 0);
+    assert.equal(result.imagesBlocked, 1);
+    assert.ok(
+      texts.some((t) => t.includes('因内容违规无法发送')),
+      '应该补一条文字说明',
+    );
+  } finally {
+    server.close();
+  }
+});
+
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {
   assert.equal(normalizeCommand('<@!BOT123> 订阅'), '订阅');
   assert.equal(matchKeyword('<@!BOT123> 订阅', DEFAULT_COMMANDS.enable), true);

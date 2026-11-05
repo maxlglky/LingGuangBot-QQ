@@ -188,18 +188,25 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
 
   // 主推文配图：紧跟正文；多图之间不留空行（否则每张之间会有一道间隔）
   // QQ 的 Markdown 图片必须同时给宽高（#600px #400px），否则只显示 alt 文字
-  images.forEach((img, index) => {
-    if (!img?.url) return;
-    const width = Math.round(img.width || 600);
-    const height = Math.round(img.height || 400);
-    // 有正文时图和正文之间空一行；纯图推文直接接在抬头下面，不留空行
-    if (index === 0 && bodyText) lines.push('');
-    lines.push(`![推文配图 #${width}px #${height}px](${img.url})`);
-  });
+  const imagesBlocked = ctx.imagesBlocked === true;
+  if (imagesBlocked) {
+    // 图片被平台判违规：留一行文字标注，卡片排版照旧
+    const n = Number(ctx.blockedImages) || 0;
+    lines.push('', `> ⚠️ ${n > 0 ? `共 ${n} 张` : ''}配图因内容违规无法发送`);
+  } else {
+    images.forEach((img, index) => {
+      if (!img?.url) return;
+      const width = Math.round(img.width || 600);
+      const height = Math.round(img.height || 400);
+      // 有正文时图和正文之间空一行；纯图推文直接接在抬头下面，不留空行
+      if (index === 0 && bodyText) lines.push('');
+      lines.push(`![推文配图 #${width}px #${height}px](${img.url})`);
+    });
+  }
 
   // 图片「人物标记」：X 会显示成「某某 及另外 N 人」，贴在图片下面
   const photoTags = Array.isArray(ctx.photoTags) ? ctx.photoTags : [];
-  if (photoTags.length) {
+  if (photoTags.length && !imagesBlocked) {
     const first = photoTags[0]?.name || photoTags[0]?.screenName || '';
     if (first) {
       lines.push(photoTags.length > 1 ? `> ${first} 及另外${photoTags.length - 1}人` : `> ${first}`);
@@ -208,12 +215,12 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
 
   // 外链卡片（比如 fanicon 的「New Post Available」）：X 会在图下面标来自哪个站点
   const cardSource = String(ctx.cardSource || '').trim();
-  if (cardSource) lines.push(`> 来自 ${cardSource}`);
+  if (cardSource && !imagesBlocked) lines.push(`> 来自 ${cardSource}`);
 
   // 图片 / 视频放不进卡片时，卡片里留一行提示，稍后单独发
   const extras = [];
   if (ctx.videoCount > 0) extras.push(`🎬 视频共 ${ctx.videoCount} 段`);
-  if (ctx.imageCount > 0) extras.push(`🖼 图片共 ${ctx.imageCount} 张`);
+  if (ctx.imageCount > 0 && !imagesBlocked) extras.push(`🖼 图片共 ${ctx.imageCount} 张`);
   if (extras.length) {
     lines.push('', `> ${extras.join('，')}，见下条消息`);
   }
