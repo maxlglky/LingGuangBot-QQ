@@ -17,7 +17,7 @@ import {
 import { dedupeKey, toTweet } from '../src/tweet.js';
 import { pickOwnAvatar, extractPhotoTags, extractCardLink, userInfo } from '../src/xgraphql.js';
 import { originalImageUrl } from '../src/util.js';
-import { formatTweet, formatTweetMarkdown, linkifyMentions } from '../src/format.js';
+import { formatTweet, formatTweetMarkdown, linkifyEntities, linkifyMentions } from '../src/format.js';
 import { request } from '../src/http.js';
 import { Poller } from '../src/poller.js';
 import { GroupRateLimiter, QQClient } from '../src/qq.js';
@@ -790,7 +790,7 @@ test('视频选档：按码率 × 时长估体积，挑装得下的最高画质'
   assert.equal(qq.pickVideoVariant({}, 30), null);
 });
 
-test('正文里的 @提及 变成可点击链接（主推 / 引用 / 回复都生效）', () => {
+test('正文里的 @提及 和 #标签 变成可点击链接（主推 / 引用 / 回复都生效）', () => {
   // 基本替换
   assert.equal(
     linkifyMentions('引用先は（@kurachire0123）まで'),
@@ -804,12 +804,35 @@ test('正文里的 @提及 变成可点击链接（主推 / 引用 / 回复都�
   // 连续 @@ 不重复替换
   assert.equal(linkifyMentions('@a@a'), '@a@a');
 
+  // 标签：和 X 一样链到 hashtag 页
+  assert.equal(
+    linkifyEntities('#TikTok'),
+    '[#TikTok](https://x.com/hashtag/TikTok)',
+  );
+  assert.equal(
+    linkifyEntities('今天 #ハロウィン🎃 快乐'),
+    '今天 [#ハロウィン](https://x.com/hashtag/%E3%83%8F%E3%83%AD%E3%82%A6%E3%82%A3%E3%83%B3)🎃 快乐',
+    'emoji 不算进标签',
+  );
+  assert.equal(linkifyEntities('##标题'), '##标题', '标题语法不算标签');
+  assert.equal(linkifyEntities('abc#def'), 'abc#def', '紧贴字母不算标签');
+  assert.equal(
+    linkifyEntities('见 https://x.com/i/hashtag/foo'),
+    '见 https://x.com/i/hashtag/foo',
+    'URL 里的 # 不动',
+  );
+  assert.equal(
+    linkifyEntities('@a #B'),
+    '[@a](https://x.com/a) [#B](https://x.com/hashtag/B)',
+    '提及和标签可以同时出现',
+  );
+
   const cfg = baseConfig();
   cfg.forward.timeZone = 'Asia/Shanghai';
   const tweet = {
     id: 'x:1',
     link: 'https://x.com/a/status/1',
-    text: '放送延期です。（@kurac hire0123）から続報',
+    text: '放送延期です。（@kurac hire0123）まで #お詫び',
     published: new Date('2026-11-04T09:05:00Z'),
     images: [],
     isReply: false,
@@ -819,18 +842,21 @@ test('正文里的 @提及 变成可点击链接（主推 / 引用 / 回复都�
   // 主推正文
   const main = formatTweetMarkdown(tweet, cfg, {});
   assert.match(main, /\[@kurac\]\(https:\/\/x\.com\/kurac\)/);
+  assert.match(main, /\[#お詫び\]\(https:\/\/x\.com\/hashtag\//);
 
   // 引用块正文
   const quoted = formatTweetMarkdown(tweet, cfg, {
-    quote: { name: '对方', text: '問い合わせは @help_jp まで', link: 'https://x.com/b/status/2' },
+    quote: { name: '对方', text: '問い合わせは @help_jp まで #公式', link: 'https://x.com/b/status/2' },
   });
   assert.match(quoted, /\[@help_jp\]\(https:\/\/x\.com\/help_jp\)/);
+  assert.match(quoted, /\[#公式\]\(https:\/\/x\.com\/hashtag\//);
 
   // 回复上下文
   const replied = formatTweetMarkdown(tweet, cfg, {
-    replyContext: { name: '对方', text: '（@kurac hire0123）さんへ' },
+    replyContext: { name: '对方', text: '（@kurac hire0123）さんへ #お知らせ' },
   });
   assert.match(replied, /\[@kurac\]\(https:\/\/x\.com\/kurac\)/);
+  assert.match(replied, /\[#お知らせ\]\(https:\/\/x\.com\/hashtag\//);
 });
 
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {

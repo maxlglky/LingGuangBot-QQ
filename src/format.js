@@ -73,9 +73,11 @@ export function buildArkCard(tweet, cfg, imageUrl) {
 
 const URL_RE = /https?:\/\/[^\s<>()（）「」]+/g;
 const MENTION_RE = /(?<![\w@])@([A-Za-z0-9_]{1,15})(?![\w@])/g;
+// X 的标签可以用中文/假名/数字/下划线，碰到空白、标点、emoji 就结束
+const HASHTAG_RE = /(?<![\w#@])#([\p{L}\p{N}_]{1,80})/gu;
 
 /**
- * 把正文里的 @某人 变成和 X 一样的可点击链接。
+ * 把正文里的 @某人 变成和 X 一样的可点击链接（只看提及，不看标签）。
  * 邮箱（`a@b.com`）和 URL 里的 @ 不动；链接只认 1-15 位的 X 用户名。
  */
 export function linkifyMentions(text) {
@@ -94,6 +96,32 @@ export function linkifyMentions(text) {
   });
 
   return linked.replace(/\u0000(\d+)\u0000/g, (_m, i) => urls[Number(i)] ?? '');
+}
+
+/**
+ * 正文里的 @提及 和 #标签 都变成可点击链接，和 X 客户端一致：
+ * - `@某人` → `https://x.com/某人`
+ * - `#标签` → `https://x.com/hashtag/标签`
+ * 邮箱和 URL 里的内容原样保留。
+ */
+export function linkifyEntities(text) {
+  const src = String(text || '');
+  if (!src.includes('@') && !src.includes('#')) return src;
+
+  const urls = [];
+  const masked = src.replace(URL_RE, (m) => {
+    urls.push(m);
+    return `\u0000${urls.length - 1}\u0000`;
+  });
+
+  const withMentions = masked.replace(MENTION_RE, (_m, handle) => {
+    return `[@${handle}](https://x.com/${handle})`;
+  });
+  const withTags = withMentions.replace(HASHTAG_RE, (_m, tag) => {
+    return `[#${tag}](https://x.com/hashtag/${encodeURIComponent(tag)})`;
+  });
+
+  return withTags.replace(/\u0000(\d+)\u0000/g, (_m, i) => urls[Number(i)] ?? '');
 }
 
 /**
@@ -156,7 +184,7 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
   const originalBody = isReplyLike ? stripLeadingMentions(rawBody) : rawBody;
   const translatedText = String(ctx.translatedText || '').trim();
   const bodyText = translatedText || originalBody;
-  if (bodyText) lines.push(escapeMarkdownText(linkifyMentions(bodyText)));
+  if (bodyText) lines.push(escapeMarkdownText(linkifyEntities(bodyText)));
 
   // 主推文配图：紧跟正文；多图之间不留空行（否则每张之间会有一道间隔）
   // QQ 的 Markdown 图片必须同时给宽高（#600px #400px），否则只显示 alt 文字
@@ -215,7 +243,7 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     }
     if (quoteText) {
       inner.push('');
-      for (const line of escapeMarkdownText(linkifyMentions(quoteText)).split('\n')) inner.push(line);
+      for (const line of escapeMarkdownText(linkifyEntities(quoteText)).split('\n')) inner.push(line);
     }
     (quote.images || []).forEach((img, index) => {
       if (!img?.url) return;
