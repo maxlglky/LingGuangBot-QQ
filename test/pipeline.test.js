@@ -17,7 +17,7 @@ import {
 import { dedupeKey, toTweet } from '../src/tweet.js';
 import { pickOwnAvatar, extractPhotoTags, extractCardLink, userInfo } from '../src/xgraphql.js';
 import { originalImageUrl } from '../src/util.js';
-import { formatTweet, formatTweetMarkdown } from '../src/format.js';
+import { formatTweet, formatTweetMarkdown, linkifyMentions } from '../src/format.js';
 import { request } from '../src/http.js';
 import { Poller } from '../src/poller.js';
 import { GroupRateLimiter, QQClient } from '../src/qq.js';
@@ -788,6 +788,49 @@ test('视频选档：按码率 × 时长估体积，挑装得下的最高画质'
     'https://video.twimg.com/only.mp4',
   );
   assert.equal(qq.pickVideoVariant({}, 30), null);
+});
+
+test('正文里的 @提及 变成可点击链接（主推 / 引用 / 回复都生效）', () => {
+  // 基本替换
+  assert.equal(
+    linkifyMentions('引用先は（@kurachire0123）まで'),
+    '引用先は（[@kurachire0123](https://x.com/kurachire0123)）まで',
+  );
+  // 邮箱、URL 里的 @ 不动
+  assert.equal(linkifyMentions('联系 foo@bar.com'), '联系 foo@bar.com');
+  assert.equal(linkifyMentions('见 https://x.com/@someone'), '见 https://x.com/@someone');
+  // 中文/假名贴着 @ 不算提及
+  assert.equal(linkifyMentions('中@文 と あ@い'), '中@文 と あ@い');
+  // 连续 @@ 不重复替换
+  assert.equal(linkifyMentions('@a@a'), '@a@a');
+
+  const cfg = baseConfig();
+  cfg.forward.timeZone = 'Asia/Shanghai';
+  const tweet = {
+    id: 'x:1',
+    link: 'https://x.com/a/status/1',
+    text: '放送延期です。（@kurac hire0123）から続報',
+    published: new Date('2026-11-04T09:05:00Z'),
+    images: [],
+    isReply: false,
+    isRetweet: false,
+  };
+
+  // 主推正文
+  const main = formatTweetMarkdown(tweet, cfg, {});
+  assert.match(main, /\[@kurac\]\(https:\/\/x\.com\/kurac\)/);
+
+  // 引用块正文
+  const quoted = formatTweetMarkdown(tweet, cfg, {
+    quote: { name: '对方', text: '問い合わせは @help_jp まで', link: 'https://x.com/b/status/2' },
+  });
+  assert.match(quoted, /\[@help_jp\]\(https:\/\/x\.com\/help_jp\)/);
+
+  // 回复上下文
+  const replied = formatTweetMarkdown(tweet, cfg, {
+    replyContext: { name: '对方', text: '（@kurac hire0123）さんへ' },
+  });
+  assert.match(replied, /\[@kurac\]\(https:\/\/x\.com\/kurac\)/);
 });
 
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {

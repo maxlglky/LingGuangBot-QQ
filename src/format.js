@@ -71,6 +71,31 @@ export function buildArkCard(tweet, cfg, imageUrl) {
   };
 }
 
+const URL_RE = /https?:\/\/[^\s<>()（）「」]+/g;
+const MENTION_RE = /(?<![\w@])@([A-Za-z0-9_]{1,15})(?![\w@])/g;
+
+/**
+ * 把正文里的 @某人 变成和 X 一样的可点击链接。
+ * 邮箱（`a@b.com`）和 URL 里的 @ 不动；链接只认 1-15 位的 X 用户名。
+ */
+export function linkifyMentions(text) {
+  const src = String(text || '');
+  if (!src.includes('@')) return src;
+
+  // 先把 URL 挖出来挡住，免得到 URL 里去找 @
+  const urls = [];
+  const masked = src.replace(URL_RE, (m) => {
+    urls.push(m);
+    return `\u0000${urls.length - 1}\u0000`;
+  });
+
+  const linked = masked.replace(MENTION_RE, (_m, handle) => {
+    return `[@${handle}](https://x.com/${handle})`;
+  });
+
+  return linked.replace(/\u0000(\d+)\u0000/g, (_m, i) => urls[Number(i)] ?? '');
+}
+
 /**
  * 推文正文里以 Markdown 语法字符开头的行会被解析成标题/列表/引用，
  * 这里在行首插一个零宽空格阻断语法（肉眼不可见）。
@@ -131,7 +156,7 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
   const originalBody = isReplyLike ? stripLeadingMentions(rawBody) : rawBody;
   const translatedText = String(ctx.translatedText || '').trim();
   const bodyText = translatedText || originalBody;
-  if (bodyText) lines.push(escapeMarkdownText(bodyText));
+  if (bodyText) lines.push(escapeMarkdownText(linkifyMentions(bodyText)));
 
   // 主推文配图：紧跟正文；多图之间不留空行（否则每张之间会有一道间隔）
   // QQ 的 Markdown 图片必须同时给宽高（#600px #400px），否则只显示 alt 文字
@@ -190,7 +215,7 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     }
     if (quoteText) {
       inner.push('');
-      for (const line of escapeMarkdownText(quoteText).split('\n')) inner.push(line);
+      for (const line of escapeMarkdownText(linkifyMentions(quoteText)).split('\n')) inner.push(line);
     }
     (quote.images || []).forEach((img, index) => {
       if (!img?.url) return;
