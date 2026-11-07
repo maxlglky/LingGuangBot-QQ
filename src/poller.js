@@ -107,12 +107,17 @@ export class Poller {
     return (await this.fetchTweetExtras(acfg, tweetId)).photoTags;
   }
 
-  /** 组装要发出去的图片：推文自带图片优先，没有就用「外链卡片」的预览图。 */
+  /**
+   * 组装要发出去的图片：推文自带图片优先，没有才考虑「外链卡片」的预览图。
+   * X 的规矩：有引用推文时只展示引用卡片，正文里那个链接的预览图不展示，
+   * 所以这种情况不补卡片图（否则会多出一张 X 上没有的图）。
+   */
   buildPhotos(detail, tweet, extras, acfg) {
     const own = detail?.photos?.length
       ? detail.photos
       : (tweet?.images || []).map((url) => ({ url }));
     if (own.length) return { photos: this.preferOriginal(own, acfg), cardSource: '' };
+    if (detail?.quote) return { photos: [], cardSource: '' };
     const card = extras?.card;
     // player 卡片：视频会单独发，这里就不再发封面图
     if (card?.videoUrl) return { photos: [], cardSource: card.domain || '' };
@@ -138,10 +143,11 @@ export class Poller {
     return photos.map((p) => ({ ...p, url: originalImageUrl(p.url) }));
   }
 
-  /** 视频：推文自带视频优先，没有就用外链卡片里的 player 视频。 */
+  /** 视频：推文自带视频优先，没有就用外链卡片里的 player 视频（有引用时不补，同图片）。 */
   videosWithCard(detail, extras) {
     const own = detail?.videos || [];
     if (own.length) return own;
+    if (detail?.quote) return own;
     const src = extras?.card?.videoUrl;
     if (!src) return own;
     return [{ url: src, variants: [{ url: src, bitrate: 0 }] }];

@@ -975,6 +975,47 @@ test('单独发的图片被判违规时，补一句文字说明而不是静默�
   }
 });
 
+test('有引用推文时不再补正文链接的预览图（和 X 的展示一致）', () => {
+  const poller = new Poller({ cfg: baseConfig(), qq: null, store: null, logger: captureLogger() });
+  const acfg = { forward: { originalImage: false } };
+  const card = {
+    domain: 'youtube.com',
+    imageUrl: 'https://pbs.twimg.com/card_img/1/x.jpg',
+    width: 1280,
+    height: 720,
+    videoUrl: '',
+  };
+
+  // 有引用：X 只显示引用卡片，正文链接不显示预览图
+  assert.deepEqual(poller.buildPhotos({ photos: [], quote: { id: '2' } }, {}, { card }, acfg), {
+    photos: [],
+    cardSource: '',
+  });
+  // 没引用：照旧用卡片预览图
+  const plain = poller.buildPhotos({ photos: [], quote: null }, {}, { card }, acfg);
+  assert.equal(plain.photos.length, 1);
+  assert.equal(plain.cardSource, 'youtube.com');
+  // 推文自带图片时优先用自己的
+  const own = poller.buildPhotos(
+    { photos: [{ url: 'https://pbs.twimg.com/media/a.jpg' }], quote: { id: '2' } },
+    {},
+    { card },
+    acfg,
+  );
+  assert.equal(own.photos.length, 1);
+  assert.equal(own.cardSource, '');
+
+  // 视频卡同理
+  assert.deepEqual(
+    poller.videosWithCard({ videos: [], quote: { id: '2' } }, { card: { videoUrl: 'https://v/x.mp4' } }),
+    [],
+  );
+  assert.equal(
+    poller.videosWithCard({ videos: [], quote: null }, { card: { videoUrl: 'https://v/x.mp4' } }).length,
+    1,
+  );
+});
+
 test('群指令匹配：@占位符、空格、大小写都能识别', () => {
   assert.equal(normalizeCommand('<@!BOT123> 订阅'), '订阅');
   assert.equal(matchKeyword('<@!BOT123> 订阅', DEFAULT_COMMANDS.enable), true);
