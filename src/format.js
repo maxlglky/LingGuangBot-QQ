@@ -152,6 +152,11 @@ export function linkifyEntities(text, options = {}) {
   return withTags.replace(/\u0000(\d+)\u0000/g, (_m, i) => urls[Number(i)] ?? '');
 }
 
+// 只由「横线类字符」组成的行会被当成分隔线（`---`），还会把**上一行**变成标题。
+// 除了 ASCII，日文常用 ￣ ー ― — 和制表符 ─ ━ 等做分隔，这些也要挡住。
+const RULE_CHARS = '\\-‒–—―﹣－ー￣_=*~─━═≡▬➖';
+const RULE_RE = new RegExp(`^\\s*[${RULE_CHARS}]{2,}\\s*$`, 'u');
+
 /**
  * 推文正文里以 Markdown 语法字符开头的行会被解析成标题/列表/引用，
  * 这里在行首插一个零宽空格阻断语法（肉眼不可见）。
@@ -164,7 +169,11 @@ export function escapeMarkdownText(text) {
       if (/^\s*#{1,6}/.test(line)) {
         return `\u200B${line}`;
       }
-      if (/^\s*(>|[-*+]\s|\d+[.)]\s|`{3}|={2,}\s*$|-{3,}\s*$)/.test(line)) {
+      // 分隔线（---、===、￣￣￣、ーーー…）：不挡会把上一行变成大字标题
+      if (RULE_RE.test(line)) {
+        return `\u200B${line}`;
+      }
+      if (/^\s*(>|[-*+]\s|\d+[.)]\s|`{3})/.test(line)) {
         return `\u200B${line}`;
       }
       return line;

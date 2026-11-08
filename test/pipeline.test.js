@@ -20,6 +20,7 @@ import { originalImageUrl } from '../src/util.js';
 import {
   formatTweet,
   formatTweetMarkdown,
+  escapeMarkdownText,
   extractHashtags,
   linkifyEntities,
   linkifyMentions,
@@ -794,6 +795,35 @@ test('视频选档：按码率 × 时长估体积，挑装得下的最高画质'
     'https://video.twimg.com/only.mp4',
   );
   assert.equal(qq.pickVideoVariant({}, 30), null);
+});
+
+test('横幅式的分隔线（￣ ー ─ === ---）不会把上一行变成标题', () => {
+  const cfg = baseConfig();
+  // 日文推文常用 ￣ ￣ ￣ 做分隔；不挡住的话 QQ 会把上一行当 setext 标题
+  const tweet = {
+    id: 'x:8',
+    link: 'https://x.com/a/status/8',
+    text: '🪐AIMI ASIA TOUR 2026「STAR RISING」🪐\n￣￣￣￣￣￣￣￣￣￣\nありがとうございました🎤',
+    published: new Date('2026-11-07T12:00:00Z'),
+    images: [],
+    isReply: false,
+    isRetweet: false,
+  };
+
+  for (const line of ['￣￣￣￣￣', 'ーーーー', '────────', '---', '===']) {
+    assert.ok(
+      escapeMarkdownText(line).startsWith('\u200B'),
+      `${line} 应该被零宽空格挡住`,
+    );
+  }
+  // 普通文本不受影响
+  assert.equal(escapeMarkdownText('ありがとう🎤'), 'ありがとう🎤');
+  assert.equal(escapeMarkdownText('— 分隔 —'), '— 分隔 —');
+
+  const card = formatTweetMarkdown(tweet, cfg, {});
+  const ruleLine = card.split('\n').find((l) => l.includes('￣'));
+  assert.ok(ruleLine.startsWith('\u200B'), '卡片里的分隔线也要被挡住');
+  assert.ok(card.includes('🪐AIMI ASIA TOUR 2026「STAR RISING」🪐'), '标题行原样保留');
 });
 
 test('译文把标签和后面汉字粘在一起时，标签范围按原文来', () => {
