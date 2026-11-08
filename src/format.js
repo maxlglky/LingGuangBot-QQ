@@ -98,13 +98,22 @@ export function linkifyMentions(text) {
   return linked.replace(/\u0000(\d+)\u0000/g, (_m, i) => urls[Number(i)] ?? '');
 }
 
+/** 从**原文**里取出所有标签（原文有空格和标点，边界是准的）。 */
+export function extractHashtags(text) {
+  return [...String(text || '').matchAll(HASHTAG_RE)].map((m) => m[1]);
+}
+
 /**
  * 正文里的 @提及 和 #标签 都变成可点击链接，和 X 客户端一致：
  * - `@某人` → `https://x.com/某人`
  * - `#标签` → `https://x.com/hashtag/标签`
  * 邮箱和 URL 里的内容原样保留。
+ *
+ * `options.hashtags` 传入原文里的标签时，会按这些边界精确替换 ——
+ * X 的译文常把标签后面的空格吃掉（`#早稲田祭 お疲れ様` → `#早稲田祭感谢大家`），
+ * 只看译文的话会把后面整句汉字都吞进链接里。
  */
-export function linkifyEntities(text) {
+export function linkifyEntities(text, options = {}) {
   const src = String(text || '');
   if (!src.includes('@') && !src.includes('#')) return src;
 
@@ -117,9 +126,28 @@ export function linkifyEntities(text) {
   const withMentions = masked.replace(MENTION_RE, (_m, handle) => {
     return `[@${handle}](https://x.com/${handle})`;
   });
-  const withTags = withMentions.replace(HASHTAG_RE, (_m, tag) => {
-    return `[#${tag}](https://x.com/hashtag/${encodeURIComponent(tag)})`;
-  });
+
+  const known = [...new Set((options.hashtags || []).filter(Boolean))].sort(
+    (a, b) => b.length - a.length,
+  );
+  let withTags = withMentions;
+  if (known.length) {
+    // 用原文的标签边界；长的先替换，避免 #AB 抢了 #ABC 的前缀
+    for (const tag of known) {
+      const pattern = new RegExp(
+        `(?<![\\w#@])#${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+        'gu',
+      );
+      withTags = withTags.replace(
+        pattern,
+        `[#${tag}](https://x.com/hashtag/${encodeURIComponent(tag)})`,
+      );
+    }
+  } else {
+    withTags = withTags.replace(HASHTAG_RE, (_m, tag) => {
+      return `[#${tag}](https://x.com/hashtag/${encodeURIComponent(tag)})`;
+    });
+  }
 
   return withTags.replace(/\u0000(\d+)\u0000/g, (_m, i) => urls[Number(i)] ?? '');
 }
@@ -184,7 +212,12 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
   const originalBody = isReplyLike ? stripLeadingMentions(rawBody) : rawBody;
   const translatedText = String(ctx.translatedText || '').trim();
   const bodyText = translatedText || originalBody;
-  if (bodyText) lines.push(escapeMarkdownText(linkifyEntities(bodyText)));
+  if (bodyText) {
+    // 标签边界取原文的：译文常把标签后面的空格吃掉，只看译文会把整句吞进链接
+    lines.push(
+      escapeMarkdownText(linkifyEntities(bodyText, { hashtags: extractHashtags(originalBody) })),
+    );
+  }
 
   // 主推文配图：紧跟正文；多图之间不留空行（否则每张之间会有一道间隔）
   // QQ 的 Markdown 图片必须同时给宽高（#600px #400px），否则只显示 alt 文字
@@ -250,7 +283,11 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     }
     if (quoteText) {
       inner.push('');
-      for (const line of escapeMarkdownText(linkifyEntities(quoteText)).split('\n')) inner.push(line);
+      for (const line of escapeMarkdownText(
+        linkifyEntities(quoteText, { hashtags: extractHashtags(quote.text) }),
+      ).split('\n')) {
+        inner.push(line);
+      }
     }
     (quote.images || []).forEach((img, index) => {
       if (!img?.url) return;

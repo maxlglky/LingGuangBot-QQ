@@ -17,7 +17,13 @@ import {
 import { dedupeKey, toTweet } from '../src/tweet.js';
 import { pickOwnAvatar, extractPhotoTags, extractCardLink, userInfo } from '../src/xgraphql.js';
 import { originalImageUrl } from '../src/util.js';
-import { formatTweet, formatTweetMarkdown, linkifyEntities, linkifyMentions } from '../src/format.js';
+import {
+  formatTweet,
+  formatTweetMarkdown,
+  extractHashtags,
+  linkifyEntities,
+  linkifyMentions,
+} from '../src/format.js';
 import { request } from '../src/http.js';
 import { Poller } from '../src/poller.js';
 import { GroupRateLimiter, QQClient } from '../src/qq.js';
@@ -788,6 +794,44 @@ test('视频选档：按码率 × 时长估体积，挑装得下的最高画质'
     'https://video.twimg.com/only.mp4',
   );
   assert.equal(qq.pickVideoVariant({}, 30), null);
+});
+
+test('译文把标签和后面汉字粘在一起时，标签范围按原文来', () => {
+  const original = '#SAF2026 #早稲田祭 お疲れ様でした！';
+  // X 的译文会吃掉标签后面的空格，汉字直接贴上
+  const translated = '#SAF2026 #早稲田祭感谢大家的辛勤付出！';
+
+  const tags = extractHashtags(original);
+  assert.deepEqual(tags, ['SAF2026', '早稲田祭']);
+
+  const fixed = linkifyEntities(translated, { hashtags: tags });
+  assert.match(fixed, /\[#早稲田祭\]\(https:\/\/x\.com\/hashtag\/[^)]+\)感谢大家的辛勤付出！/);
+
+  // 不传原文标签时会把后面整句吞进链接（旧行为，留个对照）
+  assert.match(linkifyEntities(translated), /\[#早稲田祭感谢大家的辛勤付出\]/);
+
+  // 渲染层：正文和译文都给出来时，用的是原文的标签边界
+  const cfg = baseConfig();
+  const tweet = {
+    id: 'x:9',
+    link: 'https://x.com/a/status/9',
+    text: original,
+    published: new Date('2026-11-07T10:49:00Z'),
+    images: [],
+    isReply: false,
+    isRetweet: false,
+  };
+  const card = formatTweetMarkdown(tweet, cfg, { translatedText: translated });
+  assert.match(card, /\[#早稲田祭\]\(https:\/\/x\.com\/hashtag\/[^)]+\)感谢/);
+  assert.doesNotMatch(card, /\[#早稲田祭感谢/);
+
+  // 引用块里的译文同理
+  const quoted = formatTweetMarkdown(tweet, cfg, {
+    quote: { name: '对方', text: original, link: 'https://x.com/b/status/8' },
+    translatedQuoteText: translated,
+  });
+  assert.match(quoted, /\[#早稲田祭\]\(https:\/\/x\.com\/hashtag\/[^)]+\)感谢/);
+  assert.doesNotMatch(quoted, /\[#早稲田祭感谢/);
 });
 
 test('正文里的 @提及 和 #标签 变成可点击链接（主推 / 引用 / 回复都生效）', () => {
