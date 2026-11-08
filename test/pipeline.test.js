@@ -16,7 +16,7 @@ import {
 } from '../src/commands.js';
 import { dedupeKey, toTweet } from '../src/tweet.js';
 import { pickOwnAvatar, extractPhotoTags, extractCardLink, userInfo } from '../src/xgraphql.js';
-import { originalImageUrl } from '../src/util.js';
+import { formatFooterTime, originalImageUrl } from '../src/util.js';
 import {
   formatTweet,
   formatTweetMarkdown,
@@ -795,6 +795,32 @@ test('视频选档：按码率 × 时长估体积，挑装得下的最高画质'
     'https://video.twimg.com/only.mp4',
   );
   assert.equal(qq.pickVideoVariant({}, 30), null);
+});
+
+test('页脚时间是「日期，时间」格式（全角逗号）', () => {
+  assert.equal(formatFooterTime(new Date('2026-11-06T11:48:00Z'), 'Asia/Shanghai'), '2026-11-06，19:48');
+
+  const cfg = baseConfig();
+  const tweet = {
+    id: 'x:7',
+    link: 'https://x.com/a/status/7',
+    text: '正文',
+    published: new Date('2026-11-06T11:48:00Z'),
+    images: [],
+    isReply: false,
+    isRetweet: false,
+  };
+  const card = formatTweetMarkdown(tweet, cfg, {
+    quote: { name: '对方', text: '引用正文', link: 'https://x.com/b/status/6', time: '2026-11-05T13:20:00Z' },
+  });
+  assert.match(card, /2026-11-06，19:48｜\[查看原帖 ↗\]/);
+  assert.match(card, /2026-11-05，21:20｜\[查看原帖 ↗\]/, '引用块页脚同样格式');
+  assert.doesNotMatch(card, /2026-11-06 19:48｜/, '不再是空格分隔');
+  // 「转帖于」那一行保持原样
+  const reposted = formatTweetMarkdown(tweet, cfg, {
+    repost: { name: '某人', time: new Date('2026-11-06T12:00:00Z') },
+  });
+  assert.match(reposted, /> 转帖于 2026-11-06 20:00/);
 });
 
 test('横幅式的分隔线（￣ ー ─ === ---）不会把上一行变成标题', () => {

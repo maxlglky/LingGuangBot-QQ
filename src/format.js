@@ -1,4 +1,4 @@
-import { formatLocalTime, formatShortTime, truncate } from './util.js';
+import { formatFooterTime, formatLocalTime, formatShortTime, truncate } from './util.js';
 import { stripLeadingMentions } from './tweet.js';
 
 /**
@@ -318,7 +318,7 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     if (qCard) inner.push(`来自 ${qCard}`);
     if (quote.videoUrl) inner.push('🎬 视频见下条消息');
     const qmeta = [];
-    if (quote.time) qmeta.push(formatLocalTime(new Date(quote.time), cfg.forward.timeZone));
+    if (quote.time) qmeta.push(formatFooterTime(new Date(quote.time), cfg.forward.timeZone));
     if (quote.link) qmeta.push(`[查看原帖 ↗](${quote.link})`);
     if (qmeta.length) {
       inner.push('');
@@ -344,7 +344,7 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
 
   const meta = [];
   const stamp = tweet.published || ctx.repost?.time;
-  if (stamp) meta.push(formatLocalTime(stamp, cfg.forward.timeZone));
+  if (stamp) meta.push(formatFooterTime(stamp, cfg.forward.timeZone));
   if (cfg.forward.includeLink !== false && tweet.link) {
     meta.push(`[查看原帖 ↗](${tweet.link})`);
   }

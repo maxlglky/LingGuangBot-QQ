@@ -173,6 +173,12 @@ export function formatLocalTime(date, timeZone) {
   return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
 }
 
+/** 卡片页脚时间：`2026-11-06，19:48`（日期与时间之间用全角逗号）。 */
+export function formatFooterTime(date, timeZone) {
+  const full = formatLocalTime(date, timeZone);
+  return full ? full.replace(' ', '，') : '';
+}
+
 /** 短时间：10-27 09:03（跨年时带年份）。 */
 export function formatShortTime(date, timeZone) {
   const d = date instanceof Date ? date : new Date(date);
