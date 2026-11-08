@@ -173,7 +173,7 @@ test('formatTweet 含账号名、正文和链接', () => {
     { ...cfg, forward: { ...cfg.forward, compact: false } },
   );
   assert.match(legacy, /【秋山由奈】新推文/);
-  assert.match(legacy, /🕒 2026-10-26 18:00/);
+  assert.match(legacy, /🕒 2026-10-26，18:00/);
 });
 
 test('GroupRateLimiter 每日上限会抛错', () => {
@@ -820,7 +820,7 @@ test('页脚时间是「日期，时间」格式（全角逗号）', () => {
   const reposted = formatTweetMarkdown(tweet, cfg, {
     repost: { name: '某人', time: new Date('2026-11-06T12:00:00Z') },
   });
-  assert.match(reposted, /> 转帖于 2026-11-06 20:00/);
+  assert.match(reposted, /> 转帖于 2026-11-06，20:00/, '转帖行也用同一个格式');
 });
 
 test('横幅式的分隔线（￣ ー ─ === ---）不会把上一行变成标题', () => {

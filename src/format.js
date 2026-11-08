@@ -1,4 +1,4 @@
-import { formatFooterTime, formatLocalTime, formatShortTime, truncate } from './util.js';
+import { formatFooterTime, formatShortTime, truncate } from './util.js';
 import { stripLeadingMentions } from './tweet.js';
 
 /**
@@ -11,7 +11,7 @@ export function formatTweet(tweet, cfg) {
   const time = tweet.published
     ? compact
       ? formatShortTime(tweet.published, cfg.forward.timeZone)
-      : formatLocalTime(tweet.published, cfg.forward.timeZone)
+      : formatFooterTime(tweet.published, cfg.forward.timeZone)
     : '';
 
   const marks = [];
@@ -33,7 +33,7 @@ export function formatTweet(tweet, cfg) {
   if (tweet.repostName) {
     parts.push(`⇄ ${tweet.repostName} 已转帖`);
     if (tweet.repostTime) {
-      parts.push(`> 转帖于 ${formatLocalTime(tweet.repostTime, cfg.forward.timeZone)}`);
+      parts.push(`> 转帖于 ${formatFooterTime(tweet.repostTime, cfg.forward.timeZone)}`);
     }
     parts.push('');
   }
@@ -199,7 +199,7 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     // 横幅只放「谁转的」；转推时间另起一行用引用块缩进，避免一行太长
     lines.push(`## **⇄ ${ctx.repost.name} 已转帖**`);
     if (ctx.repost.time) {
-      lines.push(`> 转帖于 ${formatLocalTime(ctx.repost.time, cfg.forward.timeZone)}`);
+      lines.push(`> 转帖于 ${formatFooterTime(ctx.repost.time, cfg.forward.timeZone)}`);
     }
     lines.push('');
   }
