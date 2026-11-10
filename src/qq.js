@@ -474,11 +474,23 @@ export class QQClient {
     // 引用推文自己没有图片、但有外链卡片时，用卡片预览图代替
     const hasOwnPhotos = Boolean(quote.photos && quote.photos.length);
     const cardVideoUrl = !hasOwnPhotos ? quote.card?.videoUrl || '' : '';
+    // X 长文（Article）：正文只有一条 article 链接，封面图当配图用
+    const article = quote.article || null;
     const quoteCard =
       !hasOwnPhotos && quote.card && quote.card.imageUrl
         ? { url: quote.card.imageUrl, width: quote.card.width, height: quote.card.height }
         : null;
-    const photoList = hasOwnPhotos ? quote.photos : quoteCard ? [quoteCard] : [];
+    const quoteArticleCover =
+      !hasOwnPhotos && !quoteCard && article?.coverUrl
+        ? { url: article.coverUrl, width: article.coverWidth, height: article.coverHeight }
+        : null;
+    const photoList = hasOwnPhotos
+      ? quote.photos
+      : quoteCard
+        ? [quoteCard]
+        : quoteArticleCover
+          ? [quoteArticleCover]
+          : [];
     const images = photos
       ? await this.prepareInlineImages(photoList, { maxWidth, limit })
       : [];
@@ -492,6 +504,7 @@ export class QQClient {
       cardSource: quoteCard || cardVideoUrl ? quote.card?.domain || '' : '',
       // 外链 player 卡片的视频：卡片里放不下，交给上层单独发
       videoUrl: cardVideoUrl,
+      article,
       link: quote.url,
       time: quote.createdAt,
     };

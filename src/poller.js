@@ -1,6 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { dedupeKey, toTweet } from './tweet.js';
-import { XCookieClient, extractCardLink, extractPhotoTags, fetchXCookie } from './xgraphql.js';
+import {
+  XCookieClient,
+  extractArticle,
+  extractCardLink,
+  extractPhotoTags,
+  fetchXCookie,
+} from './xgraphql.js';
 import { fetchTweetDetail, resolveRepost } from './fx.js';
 import { buildArkCard, formatTweet, formatTweetMarkdown } from './format.js';
 import { originalImageUrl, sleep } from './util.js';
@@ -75,7 +81,7 @@ export class Poller {
    */
   async fetchTweetExtras(acfg, tweetId) {
     const id = String(tweetId || '').replace(/^x:/, '');
-    const empty = { photoTags: [], card: null };
+    const empty = { photoTags: [], card: null, article: null };
     if (!id) return empty;
     if (this.photoTagCache.has(id)) return this.photoTagCache.get(id);
     try {
@@ -92,6 +98,7 @@ export class Poller {
       const extras = {
         photoTags: extractPhotoTags(media),
         card: extractCardLink(result),
+        article: extractArticle(result),
       };
       if (this.photoTagCache.size > 500) this.photoTagCache.clear();
       this.photoTagCache.set(id, extras);
@@ -426,6 +433,7 @@ export class Poller {
               ...detail.quote,
               photoTags: quoteExtras.photoTags,
               card: quoteExtras.card,
+              article: quoteExtras.article,
             },
             {
               photos: await this.wantInlineImages(acfg).catch(() => false),
@@ -627,6 +635,7 @@ export class Poller {
             ...detail.quote,
             photoTags: quoteExtras.photoTags,
             card: quoteExtras.card,
+            article: quoteExtras.article,
           },
           {
             photos: await this.wantInlineImages(acfg).catch(() => false),

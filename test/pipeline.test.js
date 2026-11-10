@@ -797,6 +797,44 @@ test('视频选档：按码率 × 时长估体积，挑装得下的最高画质'
   assert.equal(qq.pickVideoVariant({}, 30), null);
 });
 
+test('引用的 X 长文（Article）显示标题和摘要，而不是链接', () => {
+  const cfg = baseConfig();
+  const tweet = {
+    id: 'x:5',
+    link: 'https://x.com/a/status/5',
+    text: '主推正文',
+    published: new Date('2026-11-10T01:45:00Z'),
+    images: [],
+    isReply: false,
+    isRetweet: false,
+  };
+  const article = {
+    id: '2108102622565842944',
+    title: '「ヘブバン×ラ チッタデッラコラボ」開催決定！',
+    previewText: '2026年11月13日（金）より、ラ チッタデッラとのコラボ開催決定！\n【開催概要】',
+    coverUrl: 'https://pbs.twimg.com/media/HUGAYjzaIAAhVqi.jpg',
+    coverWidth: 1500,
+    coverHeight: 600,
+    url: 'https://x.com/i/article/2108102622565842944',
+  };
+  const card = formatTweetMarkdown(tweet, cfg, {
+    quote: {
+      name: 'ヘブンバーンズレッド公式',
+      // 这种推文的正文只有一条 article 链接
+      text: 'https://x.com/i/article/2108102622565842944',
+      images: [{ url: 'qqbot-media://image/v1/cover', width: 520, height: 208 }],
+      time: '2026-10-08T11:42:00Z',
+      article,
+    },
+  });
+
+  assert.match(card, /\*\*「ヘブバン×ラ チッタデッラコラボ」開催決定！\*\*/, '标题加粗显示');
+  assert.match(card, /2026年11月13日（金）より/, '摘要显示');
+  assert.match(card, /查看原帖 ↗\]\(https:\/\/x\.com\/i\/article\/2108102622565842944\)/);
+  assert.doesNotMatch(card, /> https:\/\/x\.com\/i\/article\/2108102622565842944\n/, '不再显示裸链接');
+  assert.match(card, /!\[引用配图 #520px #208px\]/);
+});
+
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {
   assert.equal(formatFooterTime(new Date('2026-11-06T11:48:00Z'), 'Asia/Shanghai'), '2026-11-06，19:48');
 

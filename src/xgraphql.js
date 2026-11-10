@@ -476,6 +476,29 @@ export function extractCardLink(result) {
 }
 
 /**
+ * 取「X 长文（Article）」信息。这类推文的正文只有一个
+ * `https://x.com/i/article/<id>` 链接，真正的标题/摘要/封面在
+ * `result.article.article_results.result` 里。
+ */
+export function extractArticle(result) {
+  const art = result?.article?.article_results?.result || result?.article?.result;
+  if (!art) return null;
+  const cover = art.cover_media?.media_info || {};
+  const id = String(art.rest_id || '');
+  const title = String(art.title || '').trim();
+  if (!id && !title) return null;
+  return {
+    id,
+    title,
+    previewText: String(art.preview_text || '').trim(),
+    coverUrl: cover.original_img_url || '',
+    coverWidth: Number(cover.original_img_width) || 0,
+    coverHeight: Number(cover.original_img_height) || 0,
+    url: id ? `https://x.com/i/article/${id}` : '',
+  };
+}
+
+/**
  * 取用户信息，兼容 X 的两种返回结构：
  * - 老结构：`legacy.name` / `legacy.screen_name` / `legacy.profile_image_url_https`
  * - 新结构：`core.name` / `core.screen_name` / `avatar.image_url`（2026 年起逐步切换）

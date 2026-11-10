@@ -290,7 +290,20 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     } else if (quote === ctx.replyContext && ctx.translatedReplyText) {
       quoteText = String(ctx.translatedReplyText);
     }
-    if (quoteText) {
+    // X 长文（Article）：正文只有一条 article 链接，改成「标题 + 摘要」，和 X 上一样
+    const article = quote.article;
+    let articleLines = null;
+    if (article?.title) {
+      articleLines = [`**${article.title}**`];
+      const excerpt = String(article.previewText || '').trim();
+      if (excerpt) articleLines.push('', truncate(excerpt.replace(/\s*\n\s*/g, '\n'), 200));
+    }
+    if (articleLines) {
+      inner.push('');
+      for (const line of articleLines) {
+        for (const part of escapeMarkdownText(line).split('\n')) inner.push(part);
+      }
+    } else if (quoteText) {
       inner.push('');
       for (const line of escapeMarkdownText(
         linkifyEntities(quoteText, { hashtags: extractHashtags(quote.text) }),
@@ -319,7 +332,8 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     if (quote.videoUrl) inner.push('🎬 视频见下条消息');
     const qmeta = [];
     if (quote.time) qmeta.push(formatFooterTime(new Date(quote.time), cfg.forward.timeZone));
-    if (quote.link) qmeta.push(`[查看原帖 ↗](${quote.link})`);
+    const qlink = quote.article?.url || quote.link || '';
+    if (qlink) qmeta.push(`[查看原帖 ↗](${qlink})`);
     if (qmeta.length) {
       inner.push('');
       inner.push(qmeta.join('｜'));
