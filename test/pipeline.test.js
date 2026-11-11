@@ -797,6 +797,22 @@ test('视频选档：按码率 × 时长估体积，挑装得下的最高画质'
   assert.equal(qq.pickVideoVariant({}, 30), null);
 });
 
+test('长短标签同时出现时不会互相嵌套（#愛美 / #愛美_星々の宴）', () => {
+  const text = '#愛美 #愛美_星々の宴';
+  const tags = extractHashtags(text);
+  assert.deepEqual(tags, ['愛美', '愛美_星々の宴']);
+
+  const out = linkifyEntities(text, { hashtags: tags });
+  assert.equal(
+    out,
+    '[#愛美](https://x.com/hashtag/%E6%84%9B%E7%BE%8E) ' +
+      '[#愛美_星々の宴](https://x.com/hashtag/%E6%84%9B%E7%BE%8E_%E6%98%9F%E3%80%85%E3%81%AE%E5%AE%B4)',
+  );
+  // 逐个 replace 会产出 [[#愛美](…)_星々の宴](…) 这种坏结构
+  assert.doesNotMatch(out, /\[\[/);
+  assert.doesNotMatch(out, /\]\([^)]*\)_/);
+});
+
 test('引用的 X 长文（Article）显示标题和摘要，而不是链接', () => {
   const cfg = baseConfig();
   const tweet = {

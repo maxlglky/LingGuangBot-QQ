@@ -132,17 +132,17 @@ export function linkifyEntities(text, options = {}) {
   );
   let withTags = withMentions;
   if (known.length) {
-    // 用原文的标签边界；长的先替换，避免 #AB 抢了 #ABC 的前缀
-    for (const tag of known) {
-      const pattern = new RegExp(
-        `(?<![\\w#@])#${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
-        'gu',
-      );
-      withTags = withTags.replace(
-        pattern,
-        `[#${tag}](https://x.com/hashtag/${encodeURIComponent(tag)})`,
-      );
-    }
+    // 用原文的标签边界；一次替换完，长标签排在前面优先匹配。
+    // 逐个 replace 会互相嵌套：先替换 #愛美_星々の宴，再替换 #愛美 时会命中
+    // 刚才生成的链接文字，产出 `[[#愛美](…)_星々の宴](…)` 这种坏结构。
+    const alternation = known
+      .map((tag) => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|');
+    const pattern = new RegExp(`(?<![\\w#@])#(?:${alternation})`, 'gu');
+    withTags = withTags.replace(pattern, (m) => {
+      const tag = m.slice(1);
+      return `[#${tag}](https://x.com/hashtag/${encodeURIComponent(tag)})`;
+    });
   } else {
     withTags = withTags.replace(HASHTAG_RE, (_m, tag) => {
       return `[#${tag}](https://x.com/hashtag/${encodeURIComponent(tag)})`;
