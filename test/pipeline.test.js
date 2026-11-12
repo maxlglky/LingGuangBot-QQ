@@ -183,7 +183,7 @@ test('GroupRateLimiter 每日上限会抛错', () => {
 });
 
 test('端到端：拉取 → 推送 → 去重', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'lingguangbot-'));
+  const dir = await mkdtemp(join(tmpdir(), 'x2qq-'));
   const rssFile = join(dir, 'feed.xml');
   await writeFile(rssFile, JSON.stringify(SAMPLE_ITEMS), 'utf8');
 
@@ -218,7 +218,7 @@ test('端到端：拉取 → 推送 → 去重', async () => {
 });
 
 test('seed 模式只标记已读，不发送', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'lingguangbot-'));
+  const dir = await mkdtemp(join(tmpdir(), 'x2qq-'));
   const rssFile = join(dir, 'feed.xml');
   await writeFile(rssFile, JSON.stringify(SAMPLE_ITEMS), 'utf8');
 
@@ -1182,7 +1182,7 @@ test('群指令匹配：@占位符、空格、大小写都能识别', () => {
 });
 
 test('只推送给已开启推送的群', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'lingguangbot-'));
+  const dir = await mkdtemp(join(tmpdir(), 'x2qq-'));
   const rssFile = join(dir, 'feed.json');
   await writeFile(
     rssFile,

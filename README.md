@@ -1,4 +1,4 @@
-# LingGuangBot-QQ（凌光姬-QQ）
+# x2qq
 
 > 把 X（Twitter）账号的新推文自动转发到 QQ 群或 QQ 私聊，成品是一张近似 QQ 原生的推文卡片。
 
@@ -6,11 +6,11 @@
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue.svg">
   <img alt="node" src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg">
   <img alt="dependencies" src="https://img.shields.io/badge/dependencies-0-success.svg">
-  <a href="https://github.com/maxlglky/LingGuangBot-QQ/actions/workflows/test.yml"><img alt="tests" src="https://github.com/maxlglky/LingGuangBot-QQ/actions/workflows/test.yml/badge.svg"></a>
+  <a href="https://github.com/maxlglky/x2qq/actions/workflows/test.yml"><img alt="tests" src="https://github.com/maxlglky/x2qq/actions/workflows/test.yml/badge.svg"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg">
 </p>
 
-想第一时间看到某个账号的更新，又不想一直刷 X？把它交给 LingGuangBot-QQ：
+想第一时间看到某个账号的更新，又不想一直刷 X？把它交给 x2qq：
 默认每 5 分钟检查一次，有新推就发到你的群或私聊。
 
 **卡片里会还原这些细节**（都按 X 客户端的样式来）：
@@ -124,8 +124,8 @@
 
 ```bash
 # 1. 拿到代码
-git clone https://github.com/maxlglky/LingGuangBot-QQ.git
-cd LingGuangBot-QQ
+git clone https://github.com/maxlglky/x2qq.git
+cd x2qq
 
 # 2. 生成配置
 cp config.example.json config.json      # Windows: copy config.example.json config.json
@@ -211,9 +211,9 @@ set CLASH_EXE=C:\path\to\clash-win64.exe
 它会自己 clone、向你索取凭据、自检并启动：
 
 ```text
-请帮我部署 LingGuangBot-QQ —— 一个用 Node.js 写的「X 推文转发到 QQ 群/私聊」的自托管服务。
+请帮我部署 x2qq —— 一个用 Node.js 写的「X 推文转发到 QQ 群/私聊」的自托管服务。
 
-仓库：https://github.com/maxlglky/LingGuangBot-QQ
+仓库：https://github.com/maxlglky/x2qq
 运行要求：Node.js 22+（项目零第三方依赖，不需要 npm install）
 
 请按顺序执行，每步完成后简要汇报，遇到报错先诊断原因再继续：
@@ -690,6 +690,6 @@ fxtwitter 给的链接本身就带 `name=orig`，但走 GraphQL 兜底时拿到�
 
 ## License
 
-[MIT](LICENSE) © 2026 Max凌光 (LingGuangBot-QQ)
+[MIT](LICENSE) © 2026 Max凌光 (x2qq)
 
 `assets/verified.png` 仅作蓝 V 徽章占位，如涉及商标问题请替换或删除。

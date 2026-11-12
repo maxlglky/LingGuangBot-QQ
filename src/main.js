@@ -23,7 +23,7 @@ import { createLogger, readJson, truncate } from './util.js';
 import { XCookieClient, extractTimelineItems } from './xgraphql.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const CONFIG_PATH = process.env.LINGGUANGBOT_QQ_CONFIG || join(ROOT, 'config.json');
+const CONFIG_PATH = process.env.X2QQ_CONFIG || join(ROOT, 'config.json');
 
 const DEFAULTS = {
   logLevel: 'info',
@@ -99,7 +99,7 @@ async function loadConfig() {
   if (!cfg.qq.appId || !cfg.qq.appSecret) {
     throw new Error('config.qq.appId / config.qq.appSecret 未填写');
   }
-  if (process.env.LINGGUANGBOT_QQ_PROXY) cfg.net.proxy = process.env.LINGGUANGBOT_QQ_PROXY;
+  if (process.env.X2QQ_PROXY) cfg.net.proxy = process.env.X2QQ_PROXY;
   cfg.assetsDir = resolve(ROOT, 'assets');
   if (cfg.forward.verifiedBadge !== false && !cfg.forward.verifiedBadgePath) {
     cfg.forward.verifiedBadgePath = join(cfg.assetsDir, 'verified.png');
@@ -564,7 +564,7 @@ function createWatcher({ cfg, logger, store, qq, poller }) {
           if (needHint) {
             hint =
               '\n\n⚠️ 本群还没给机器人开启「主动推送消息」，不开的话收不到推文。' +
-              '\n请群主在手机QQ → 本群 → 设置 → 群机器人 → 凌光姬 → 设置权限 → 打开「主动推送消息」。';
+              '\n请群主在手机QQ → 本群 → 设置 → 群机器人 → x2qq → 设置权限 → 打开「主动推送消息」。';
           }
         }
         const greetLine = greet
@@ -1031,7 +1031,7 @@ async function drainMedia(qq, keep, maxRounds = 10) {
 }
 
 function usage() {
-  console.log(`LingGuangBot-QQ（凌光姬-QQ） — 把 X 账号的推文转发到 QQ 群
+  console.log(`x2qq — 把 X 账号的推文转发到 QQ 群
 
 用法:
   node src/main.js doctor            体检：凭据 / 推文源 / 群名单
@@ -1097,7 +1097,7 @@ try {
   process.exit(code);
 } catch (err) {
   console.error(`\n执行失败: ${err.message}`);
-  if (process.env.LINGGUANGBOT_QQ_DEBUG) console.error(err.stack);
+  if (process.env.X2QQ_DEBUG) console.error(err.stack);
   process.exit(1);
 }
 

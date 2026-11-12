@@ -1,8 +1,8 @@
 /** 群指令解析：去掉 @ 占位与零宽字符后做关键词匹配。 */
 
 export const DEFAULT_COMMANDS = {
-  enable: ['订阅', '订阅推文', '开推', '开启推送', '/订阅', '/rss on', 'rss on', 'lingguangbot-qq on', '/lingguangbot-qq on'],
-  disable: ['退订', '取消订阅', '关推', '关闭推送', '/退订', '/rss off', 'rss off', 'lingguangbot-qq off', '/lingguangbot-qq off'],
+  enable: ['订阅', '订阅推文', '开推', '开启推送', '/订阅', '/rss on', 'rss on', 'x2qq on', '/x2qq on'],
+  disable: ['退订', '取消订阅', '关推', '关闭推送', '/退订', '/rss off', 'rss off', 'x2qq off', '/x2qq off'],
   latest: ['最新', '最新推文', '看看推文', '推文', '拉取', 'latest', '/最新'],
   retweet: ['转推', '立即转推', '/转推'],
   pullCount: 3,
@@ -24,7 +24,7 @@ export function parseTweetId(input) {
 export function normalizeCommand(text) {
   return String(text || '')
     .replace(/<@!?[^>]*>/g, ' ')
-    // 只去掉开头的 @提及（QQ 可能把它和后面的文字粘在一起，如「@凌光姬/订阅」）
+    // 只去掉开头的 @提及（QQ 可能把它和后面的文字粘在一起，如「@x2qq/订阅」）
     .replace(/^(\s*@[^\s/@]+)+/, ' ')
     .replace(/[\u200b-\u200f\ufeff]/g, '')
     .replace(/\s+/g, ' ')

@@ -8,8 +8,8 @@
 - 无第三方依赖，**不需要 `npm install`**
 
 ```bash
-git clone git@github.com:maxlglky/LingGuangBot-QQ.git
-cd LingGuangBot-QQ
+git clone git@github.com:maxlglky/x2qq.git
+cd x2qq
 cp config.example.json config.json   # 填自己的凭据，这个文件不会被提交
 ```
 
