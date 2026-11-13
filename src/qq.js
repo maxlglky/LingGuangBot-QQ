@@ -465,7 +465,10 @@ export class QQClient {
       avatar = header?.avatar || null;
     }
     let badge = null;
-    if (quote.verified && this.cfg.forward.verifiedBadge !== false) {
+    // 和主推头部保持一致：蓝标跟随本账号的配置（forward.verifiedBadge），
+    // 不去看 X 的验证字段 —— X 的 verification / is_blue_verified 对部分账号
+    // （蓝标订阅、机构关联）会返回 false，引用块就会莫名其妙掉标。
+    if (this.cfg.forward.verifiedBadge !== false) {
       const header = await this
         .prepareHeader({ badgePath: this.cfg.forward.verifiedBadgePath })
         .catch(() => null);

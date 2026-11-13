@@ -607,6 +607,32 @@ test('外链卡片：没有媒体时用卡片的预览图，并在图下标「�
   assert.ok(md.indexOf('来自 fanicon.net') > md.indexOf('qqbot-media://image/v1/C'), '要在图片下面');
 });
 
+test('引用块的蓝标跟随配置，不看 X 的 verified 字段', async () => {
+  const cfg = baseConfig();
+  cfg.forward.verifiedBadgePath = 'assets/verified.png';
+  const qq = new QQClient(cfg, captureLogger());
+  let uploaded = 0;
+  qq.prepareHeader = async () => {
+    uploaded += 1;
+    return { avatar: 'qqbot-media://image/v1/A', badge: 'qqbot-media://image/v1/B' };
+  };
+
+  // X 对蓝标订阅 / 机构号会返回 verified:false，这时引用块也要有标
+  const quoted = await qq.prepareQuote({ author: '秋山由奈', text: 't', verified: false }, { photos: false });
+  assert.equal(quoted.badge, 'qqbot-media://image/v1/B');
+  assert.ok(uploaded > 0);
+
+  // 连 verified 字段都没有（fxtwitter 没给）时同样有标
+  const missing = await qq.prepareQuote({ author: '某人', text: 't' }, { photos: false });
+  assert.equal(missing.badge, 'qqbot-media://image/v1/B');
+
+  // 关掉开关就都没有
+  const off = new QQClient({ ...cfg, forward: { ...cfg.forward, verifiedBadge: false } }, captureLogger());
+  off.prepareHeader = async () => ({ avatar: null, badge: 'qqbot-media://image/v1/B' });
+  const none = await off.prepareQuote({ author: '某人', text: 't', verified: true }, { photos: false });
+  assert.equal(none.badge, null);
+});
+
 test('引用 / 回复块也会用卡片图并标「来自 站点」', async () => {
   const qq = new QQClient({ ...baseConfig(), forward: {} }, captureLogger());
   qq.mediaCacheFile = null;

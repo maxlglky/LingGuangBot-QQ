@@ -283,7 +283,7 @@ set CLASH_EXE=C:\path\to\clash-win64.exe
 | `forward.originalImage` | `false` | 图片用 X 上的**原图**（`?name=orig`）而不是默认压缩版。实测同一张图：默认 `900×1200 / 234KB`，原图 `1536×2048 / 548KB`。代价是流量和发送耗时变高 |
 | `forward.maxVideoMB` | `30` | 视频接受的最大体积（MB）。按「码率 × 时长」估算，挑装得下的最高画质。QQ 的软限是 30MB（超了会被降级成「文件」、不能直接播放），硬限 200MB |
 | `forward.quote` | `true` | 引用推文是否一起渲染（关掉只保留主推） |
-| `forward.verifiedBadge` | `true` | 是否显示蓝 V 徽章 |
+| `forward.verifiedBadge` | `true` | 是否显示蓝 V 徽章。这是个**样式开关**，不查账号是否真认证：主推头部、引用块、回复块统一按它显示（X 的 `verification` / `is_blue_verified` 对蓝标订阅、机构关联号经常返回 false，照它显示反而会掉标） |
 | `forward.imageMode` | `auto` | 图片放哪：`inline` 内嵌进卡片 / `message` 单独发图片消息 / `media` 图文同条（文字+首图一个气泡，纯文本） / `auto` 素材库宽裕时内嵌、快满了自动改成单独发（推荐） |
 | `forward.mediaInlineUntil` | `92` | `auto` 模式的切换线：素材库少于这个张数才内嵌 |
 | `forward.headerCacheHours` | `12` | 头像 / 徽章素材的缓存时长，过期后重新上传（防止素材被淘汰后链接失效） |

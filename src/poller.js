@@ -6,6 +6,7 @@ import {
   extractCardLink,
   extractPhotoTags,
   fetchXCookie,
+  userInfo,
 } from './xgraphql.js';
 import { fetchTweetDetail, resolveRepost } from './fx.js';
 import { buildArkCard, formatTweet, formatTweetMarkdown } from './format.js';
@@ -81,7 +82,7 @@ export class Poller {
    */
   async fetchTweetExtras(acfg, tweetId) {
     const id = String(tweetId || '').replace(/^x:/, '');
-    const empty = { photoTags: [], card: null, article: null };
+    const empty = { photoTags: [], card: null, article: null, verified: null };
     if (!id) return empty;
     if (this.photoTagCache.has(id)) return this.photoTagCache.get(id);
     try {
@@ -95,10 +96,14 @@ export class Poller {
       const result = json?.data?.tweetResult?.result || json?.data?.tweet_result?.result;
       const media =
         result?.legacy?.extended_entities?.media || result?.legacy?.entities?.media || [];
+      // fxtwitter 的 verification 字段经常是 false（蓝标订阅账号尤其明显），
+      // 所以作者认证状态以 GraphQL 的 is_blue_verified 为准，查不到才回退
+      const userRes = result?.core?.user_results?.result || result?.user || null;
       const extras = {
         photoTags: extractPhotoTags(media),
         card: extractCardLink(result),
         article: extractArticle(result),
+        verified: userRes ? userInfo(userRes).verified : null,
       };
       if (this.photoTagCache.size > 500) this.photoTagCache.clear();
       this.photoTagCache.set(id, extras);
@@ -226,6 +231,7 @@ export class Poller {
           ...parent,
           photoTags: parentExtras.photoTags,
           card: parentExtras.card,
+          verified: parentExtras.verified ?? parent.authorVerified,
           // 原推按它自己的账号名显示，和一张普通卡片一致
           author: parent.author || parent.screenName || displayTweet.replyTo || '对方',
         },
@@ -434,6 +440,7 @@ export class Poller {
               photoTags: quoteExtras.photoTags,
               card: quoteExtras.card,
               article: quoteExtras.article,
+              verified: quoteExtras.verified ?? detail.quote.verified,
             },
             {
               photos: await this.wantInlineImages(acfg).catch(() => false),
@@ -636,6 +643,7 @@ export class Poller {
             photoTags: quoteExtras.photoTags,
             card: quoteExtras.card,
             article: quoteExtras.article,
+            verified: quoteExtras.verified ?? detail.quote.verified,
           },
           {
             photos: await this.wantInlineImages(acfg).catch(() => false),
