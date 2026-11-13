@@ -887,11 +887,12 @@ test('引用的 X 长文（Article）显示标题和摘要，而不是链接', (
   assert.match(card, /查看原帖 ↗\]\(https:\/\/x\.com\/i\/article\/2108102622565842944\)/);
   assert.doesNotMatch(card, /> https:\/\/x\.com\/i\/article\/2108102622565842944\n/, '不再显示裸链接');
   assert.match(card, /!\[引用配图 #520px #208px\]/);
-  // 这段摘要没超过 200 字，不该出现截断提示
-  assert.doesNotMatch(card, /字数过多/);
+  // 长文的 preview_text 本身就是节选，所以提示常显；字数是实际转发出去的长度
+  const chars = article.previewText.replace(/\s*\n\s*/g, '\n').trim().length;
+  assert.match(card, new RegExp(`字数过多，仅转发前 ${chars} 字`), '提示用实际字数');
 });
 
-test('长文摘要被截断时，块内补一句「字数过多，仅转发前 N 字」', () => {
+test('长文只要转发就是节选：摘要尾部补「字数过多，仅转发前 N 字」', () => {
   const cfg = baseConfig();
   const tweet = {
     id: 'x:6',
@@ -926,6 +927,18 @@ test('长文摘要被截断时，块内补一句「字数过多，仅转发前 N
     card.split('\n')[hintIndex - 1].trim() === '>',
     '提示和摘要之间空一行',
   );
+
+  // 摘要没超过 200 字时，提示里写实际字数（X 给的 preview_text 本身就是节选）
+  const short = formatTweetMarkdown(tweet, cfg, {
+    quote: {
+      name: '公式',
+      text: 'https://x.com/i/article/2',
+      images: [],
+      article: { title: '短标题', previewText: 'あ'.repeat(120), url: 'https://x.com/i/article/2' },
+    },
+  });
+  assert.match(short, /字数过多，仅转发前 120 字/);
+  assert.doesNotMatch(short, /字数过多，仅转发前 200 字/);
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {
