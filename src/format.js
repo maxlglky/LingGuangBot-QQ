@@ -299,13 +299,16 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
       articleLines = [`**${article.title}**`];
       const excerpt = String(article.previewText || '').replace(/\s*\n\s*/g, '\n').trim();
       if (excerpt) {
-        const shown = truncate(excerpt, ARTICLE_EXCERPT_CHARS);
-        articleLines.push('', shown);
+        const clipped = excerpt.length > ARTICLE_EXCERPT_CHARS;
+        const chars = Math.min(excerpt.length, ARTICLE_EXCERPT_CHARS);
+        articleLines.push('', truncate(excerpt, ARTICLE_EXCERPT_CHARS));
         // X 的长文接口只给 preview_text（本身就是节选），全文拿不到；
         // 所以只要引用了长文，就说明我们只转发了前面这部分
         articleLines.push(
           '',
-          `字数过多，仅转发前 ${Math.min(excerpt.length, ARTICLE_EXCERPT_CHARS)} 字`,
+          clipped
+            ? `字数过多，仅转发前 ${chars} 字`
+            : `长文仅节选前 ${chars} 字，全文见原帖`,
         );
       }
     }

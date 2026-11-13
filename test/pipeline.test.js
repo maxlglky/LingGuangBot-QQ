@@ -889,10 +889,10 @@ test('引用的 X 长文（Article）显示标题和摘要，而不是链接', (
   assert.match(card, /!\[引用配图 #520px #208px\]/);
   // 长文的 preview_text 本身就是节选，所以提示常显；字数是实际转发出去的长度
   const chars = article.previewText.replace(/\s*\n\s*/g, '\n').trim().length;
-  assert.match(card, new RegExp(`字数过多，仅转发前 ${chars} 字`), '提示用实际字数');
+  assert.match(card, new RegExp(`长文仅节选前 ${chars} 字，全文见原帖`), '提示用实际字数');
 });
 
-test('长文只要转发就是节选：摘要尾部补「字数过多，仅转发前 N 字」', () => {
+test('长文只要转发就是节选：摘要尾部补字数提示（短摘要 / 截断两种措辞）', () => {
   const cfg = baseConfig();
   const tweet = {
     id: 'x:6',
@@ -937,8 +937,8 @@ test('长文只要转发就是节选：摘要尾部补「字数过多，仅转�
       article: { title: '短标题', previewText: 'あ'.repeat(120), url: 'https://x.com/i/article/2' },
     },
   });
-  assert.match(short, /字数过多，仅转发前 120 字/);
-  assert.doesNotMatch(short, /字数过多，仅转发前 200 字/);
+  assert.match(short, /长文仅节选前 120 字，全文见原帖/);
+  assert.doesNotMatch(short, /字数过多/);
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {
