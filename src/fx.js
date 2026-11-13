@@ -1,5 +1,14 @@
 import { request } from './http.js';
 
+/**
+ * fxtwitter 的认证标记：蓝标订阅写在 `verified`，Business / Government 这类
+ * 机构徽章只写在 `type` 里（此时 verified 是 false），两种都算「带标」。
+ */
+export function isVerifiedAuthor(author) {
+  const v = author?.verification || {};
+  return Boolean(v.verified || v.type);
+}
+
 /** 拉取单条推文的完整信息（正文、时间、全部图片、视频直链）。 */
 export async function fetchTweetDetail(id) {
   if (!id) return null;
@@ -48,7 +57,7 @@ export async function fetchTweetDetail(id) {
     author: tweet.author?.name || '',
     screenName: tweet.author?.screen_name || '',
     authorAvatar: tweet.author?.avatar_url || '',
-    authorVerified: Boolean(tweet.author?.verification?.verified),
+    authorVerified: isVerifiedAuthor(tweet.author),
     // 这条 id 本身如果是「转推」，这里是被谁转的
     repostedBy: tweet.reposted_by
       ? {
@@ -75,7 +84,7 @@ function normalizeQuote(q) {
     createdAt: q.created_at || '',
     author: q.author?.name || q.author?.screen_name || '',
     authorAvatar: q.author?.avatar_url || '',
-    verified: Boolean(q.author?.verification?.verified),
+    verified: isVerifiedAuthor(q.author),
     photos: all
       .filter((m) => m?.type === 'photo' && m.url)
       .map((m) => ({ url: m.url, width: m.width, height: m.height })),

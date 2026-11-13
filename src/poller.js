@@ -415,13 +415,17 @@ export class Poller {
 
       if (acfg.forward.style === 'markdown') {
         try {
-          // 转推时卡片显示的是被转账号，但蓝标跟随本账号的配置，避免「原推作者没认证就没标」
+          // 蓝 V 只在「卡片上显示的那个人」真的认证时才画：
+          // 转推看原推作者，普通推文看本账号（GraphQL 的 is_blue_verified 优先）
           const badgeAllowed = acfg.forward.verifiedBadge !== false;
+          const shownVerified = repost
+            ? Boolean(detail?.authorVerified)
+            : Boolean(displayTweet?.verified) || Boolean(detail?.authorVerified);
           header = await this.qq.prepareHeader({
             avatarUrls: repost
               ? [detail?.authorAvatar]
               : [acfg.x.avatarUrl, detail?.authorAvatar, this.metaFor(account).avatar],
-            badgePath: badgeAllowed ? acfg.forward.verifiedBadgePath || null : null,
+            badgePath: badgeAllowed && shownVerified ? acfg.forward.verifiedBadgePath || null : null,
           });
         } catch (err) {
           this.logger.warn(`[${label}] 准备头像/徽章失败: ${err.message}`);
@@ -619,12 +623,16 @@ export class Poller {
     let header = null;
     if (acfg.forward.style === 'markdown') {
       try {
+        // 同 tickAccount：只有卡片上显示的那个人真认证才画蓝 V
         const badgeAllowed = acfg.forward.verifiedBadge !== false;
+        const shownVerified = repost
+          ? Boolean(detail?.authorVerified)
+          : Boolean(displayTweet?.verified) || Boolean(detail?.authorVerified);
         header = await this.qq.prepareHeader({
           avatarUrls: repost
             ? [detail?.authorAvatar]
             : [acfg.x.avatarUrl, detail?.authorAvatar, this.metaFor(account).avatar],
-          badgePath: badgeAllowed ? acfg.forward.verifiedBadgePath || null : null,
+          badgePath: badgeAllowed && shownVerified ? acfg.forward.verifiedBadgePath || null : null,
         });
       } catch (err) {
         this.logger.warn(`准备头像/徽章失败: ${err.message}`);

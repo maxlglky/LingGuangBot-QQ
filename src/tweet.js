@@ -44,6 +44,8 @@ export function toTweet(item, cfg = {}) {
     title: item.title || '',
     link,
     author: cfg.displayName || item.author || '',
+    // 账号是否真的认证（决定卡片上要不要画蓝 V）
+    verified: item.verified === true,
     images: item.images || [],
     // 图片里被标记的人（X 的「人物标记」，显示成「某某 及另外 N 人」）
     photoTags: Array.isArray(item.photoTags) ? item.photoTags : [],

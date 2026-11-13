@@ -506,11 +506,18 @@ export function extractArticle(result) {
 export function userInfo(userResult = {}) {
   const legacy = userResult.legacy || {};
   const core = userResult.core || {};
+  // 认证有三种表现：is_blue_verified（蓝标订阅）、legacy.verified（老式认证）、
+  // verification.verified_type（Business / Government / Organization 这类徽章，
+  // 此时 verified 仍是 false，但账号确实带标）
+  const verifiedType =
+    userResult.verification?.verified_type || legacy.verification?.verified_type || '';
   return {
     name: legacy.name || core.name || '',
     screenName: legacy.screen_name || core.screen_name || '',
     avatar: userResult.avatar?.image_url || legacy.profile_image_url_https || '',
-    verified: Boolean(userResult.is_blue_verified || legacy.verified),
+    verified: Boolean(
+      userResult.is_blue_verified || legacy.verified || legacy.verification?.verified || verifiedType,
+    ),
   };
 }
 
@@ -545,6 +552,7 @@ export function xTweetToItem(node, screenName) {
     title: legacy.full_text || '',
     link: `https://x.com/${screen}/status/${idStr}`,
     author: user.name || '',
+    verified: user.verified === true,
     published: createdAt.toISOString(),
     contentHtml: '',
     text: legacy.full_text || '',

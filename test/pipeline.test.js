@@ -16,6 +16,7 @@ import {
 } from '../src/commands.js';
 import { dedupeKey, toTweet } from '../src/tweet.js';
 import { pickOwnAvatar, extractPhotoTags, extractCardLink, userInfo } from '../src/xgraphql.js';
+import { isVerifiedAuthor } from '../src/fx.js';
 import { formatFooterTime, originalImageUrl } from '../src/util.js';
 import {
   formatTweet,
@@ -607,26 +608,27 @@ test('外链卡片：没有媒体时用卡片的预览图，并在图下标「�
   assert.ok(md.indexOf('来自 fanicon.net') > md.indexOf('qqbot-media://image/v1/C'), '要在图片下面');
 });
 
-test('引用块的蓝标跟随配置，不看 X 的 verified 字段', async () => {
-  const cfg = baseConfig();
+test('蓝 V 只对真认证的账号显示（引用块 / 回复块同一套判断）', async () => {  const cfg = baseConfig();
   cfg.forward.verifiedBadgePath = 'assets/verified.png';
   const qq = new QQClient(cfg, captureLogger());
-  let uploaded = 0;
-  qq.prepareHeader = async () => {
-    uploaded += 1;
-    return { avatar: 'qqbot-media://image/v1/A', badge: 'qqbot-media://image/v1/B' };
-  };
+  qq.prepareHeader = async () => ({
+    avatar: 'qqbot-media://image/v1/A',
+    badge: 'qqbot-media://image/v1/B',
+  });
 
-  // X 对蓝标订阅 / 机构号会返回 verified:false，这时引用块也要有标
-  const quoted = await qq.prepareQuote({ author: '秋山由奈', text: 't', verified: false }, { photos: false });
-  assert.equal(quoted.badge, 'qqbot-media://image/v1/B');
-  assert.ok(uploaded > 0);
+  // 真认证 → 有标
+  const yes = await qq.prepareQuote({ author: '真认证', text: 't', verified: true }, { photos: false });
+  assert.equal(yes.badge, 'qqbot-media://image/v1/B');
 
-  // 连 verified 字段都没有（fxtwitter 没给）时同样有标
+  // X 说不认证（蓝标订阅 / 机构号常返回 false）→ 不画
+  const no = await qq.prepareQuote({ author: '秋山由奈', text: 't', verified: false }, { photos: false });
+  assert.equal(no.badge, null);
+
+  // 连 verified 字段都没有（数据缺失）→ 也不画
   const missing = await qq.prepareQuote({ author: '某人', text: 't' }, { photos: false });
-  assert.equal(missing.badge, 'qqbot-media://image/v1/B');
+  assert.equal(missing.badge, null);
 
-  // 关掉开关就都没有
+  // 开关关掉：即使真认证也没有
   const off = new QQClient({ ...cfg, forward: { ...cfg.forward, verifiedBadge: false } }, captureLogger());
   off.prepareHeader = async () => ({ avatar: null, badge: 'qqbot-media://image/v1/B' });
   const none = await off.prepareQuote({ author: '某人', text: 't', verified: true }, { photos: false });
@@ -747,6 +749,16 @@ test('用户信息兼容 X 的新老两种 GraphQL 结构', () => {
   assert.equal(next.verified, true);
   // 两种都没有也不该抛
   assert.deepEqual(userInfo({}), { name: '', screenName: '', avatar: '', verified: false });
+
+  // 机构徽章：verified 为 false，但 verified_type 有值（Business / Government…）
+  assert.equal(userInfo({ verification: { verified: false, verified_type: 'Business' } }).verified, true);
+  // 真没认证：两个字段都没有
+  assert.equal(userInfo({ verification: { verified: false } }).verified, false);
+  // fxtwitter 同理：verified 或 type 有一个就算带标
+  assert.equal(isVerifiedAuthor({ verification: { verified: true } }), true);
+  assert.equal(isVerifiedAuthor({ verification: { verified: false, type: 'organization' } }), true);
+  assert.equal(isVerifiedAuthor({ verification: { verified: false, type: null } }), false);
+  assert.equal(isVerifiedAuthor(undefined), false);
 });
 
 test('原图开关：打开后图片走 ?name=orig，关掉保持原样', () => {

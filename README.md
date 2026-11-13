@@ -17,7 +17,7 @@
 
 | 元素 | 效果 |
 | --- | --- |
-| 头像 + 蓝 V | `# ![头像] **账号名** ![认证]` |
+| 头像 + 蓝 V | `# ![头像] **账号名** ![认证]`，只有真认证的账号才带徽章 |
 | 转推横幅 | `## **⇄ 谁 已转帖**` + `> 转帖于 …` |
 | 回复标记 | `**↩ 回复 谁**`，下面跟着被回复的原推（缩进引用块） |
 | 引用推文 | `## 原推作者` + 正文 + 配图，整块 `>` 缩进 |
@@ -283,7 +283,7 @@ set CLASH_EXE=C:\path\to\clash-win64.exe
 | `forward.originalImage` | `false` | 图片用 X 上的**原图**（`?name=orig`）而不是默认压缩版。实测同一张图：默认 `900×1200 / 234KB`，原图 `1536×2048 / 548KB`。代价是流量和发送耗时变高 |
 | `forward.maxVideoMB` | `30` | 视频接受的最大体积（MB）。按「码率 × 时长」估算，挑装得下的最高画质。QQ 的软限是 30MB（超了会被降级成「文件」、不能直接播放），硬限 200MB |
 | `forward.quote` | `true` | 引用推文是否一起渲染（关掉只保留主推） |
-| `forward.verifiedBadge` | `true` | 是否显示蓝 V 徽章。这是个**样式开关**，不查账号是否真认证：主推头部、引用块、回复块统一按它显示（X 的 `verification` / `is_blue_verified` 对蓝标订阅、机构关联号经常返回 false，照它显示反而会掉标） |
+| `forward.verifiedBadge` | `true` | 蓝 V 徽章的**总开关**。只有账号真的认证才显示，主推头部 / 转帖内容 / 引用块 / 回复块用的是同一套判断（认证来源见[设计取舍](#设计取舍)） |
 | `forward.imageMode` | `auto` | 图片放哪：`inline` 内嵌进卡片 / `message` 单独发图片消息 / `media` 图文同条（文字+首图一个气泡，纯文本） / `auto` 素材库宽裕时内嵌、快满了自动改成单独发（推荐） |
 | `forward.mediaInlineUntil` | `92` | `auto` 模式的切换线：素材库少于这个张数才内嵌 |
 | `forward.headerCacheHours` | `12` | 头像 / 徽章素材的缓存时长，过期后重新上传（防止素材被淘汰后链接失效） |
@@ -517,6 +517,19 @@ node src/main.js xprobe             # 只验证 X 侧
 
 **为什么正文行首要插零宽空格？** QQ 会把行首的 `#` 当标题、`>` 当引用，
 插一个不可见字符就能阻断语法，不影响阅读。
+
+**蓝 V 是「真认证才画」的。** 主推头部、转帖内容、引用块、回复块走同一套判断，
+认证状态有两个来源，任一说带标就算带标：
+
+| 来源 | 字段 |
+| --- | --- |
+| X GraphQL | `is_blue_verified`、`verification.verified`、`verification.verified_type` |
+| fxtwitter | `author.verification.verified`、`author.verification.type` |
+
+> 为什么三个字段都要看：`is_blue_verified` 只代表「订阅了蓝标」，老式认证在
+> `verified` 里，而 **Business / Government / Organization 这类机构徽章只在
+> `verified_type`（或 fxtwitter 的 `type`）里有值，此时 `verified` 反而是 false**。
+> 只看 `verified` 的话，像 `@heavenburnsred` 这种机构号就会掉标。
 
 **日文推文里那种「分隔线」也要挡。** 很多人用 `￣￣￣￣` 或 `ーーーー` 做分隔，
 Markdown 会把这种「纯横线的一行」当分隔线，还会顺手把**上一行**变成大字标题 ——
