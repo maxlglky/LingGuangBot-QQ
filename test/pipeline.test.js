@@ -887,6 +887,45 @@ test('引用的 X 长文（Article）显示标题和摘要，而不是链接', (
   assert.match(card, /查看原帖 ↗\]\(https:\/\/x\.com\/i\/article\/2108102622565842944\)/);
   assert.doesNotMatch(card, /> https:\/\/x\.com\/i\/article\/2108102622565842944\n/, '不再显示裸链接');
   assert.match(card, /!\[引用配图 #520px #208px\]/);
+  // 这段摘要没超过 200 字，不该出现截断提示
+  assert.doesNotMatch(card, /字数过多/);
+});
+
+test('长文摘要被截断时，块内补一句「字数过多，仅转发前 N 字」', () => {
+  const cfg = baseConfig();
+  const tweet = {
+    id: 'x:6',
+    link: 'https://x.com/a/status/6',
+    text: '主推正文',
+    published: new Date('2026-11-10T01:45:00Z'),
+    images: [],
+    isReply: false,
+    isRetweet: false,
+  };
+  const longText = 'あ'.repeat(300);
+  const card = formatTweetMarkdown(tweet, cfg, {
+    quote: {
+      name: '公式',
+      text: 'https://x.com/i/article/1',
+      images: [],
+      time: '2026-10-08T11:42:00Z',
+      article: { title: '长文标题', previewText: longText, url: 'https://x.com/i/article/1' },
+    },
+  });
+
+  // 摘要只保留前 200 字
+  const excerptLine = card.split('\n').find((l) => l.includes('あああ'));
+  assert.ok(excerptLine.includes('…'), '截断处有省略号');
+  assert.equal(excerptLine.replace(/^>\s*/, '').replace(/…$/, '').length, 199, '前 200 字（含省略号）');
+
+  // 提示要在引用块内部（> 开头），且排在摘要下面
+  const hintIndex = card.split('\n').findIndex((l) => l.includes('字数过多'));
+  assert.ok(hintIndex > 0);
+  assert.match(card.split('\n')[hintIndex], /^> 字数过多，仅转发前 200 字$/, '缩进在引用块里');
+  assert.ok(
+    card.split('\n')[hintIndex - 1].trim() === '>',
+    '提示和摘要之间空一行',
+  );
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {

@@ -72,6 +72,8 @@ export function buildArkCard(tweet, cfg, imageUrl) {
 }
 
 const URL_RE = /https?:\/\/[^\s<>()（）「」]+/g;
+/** 引用 X 长文时，块内最多展示摘要的前多少字 */
+const ARTICLE_EXCERPT_CHARS = 200;
 const MENTION_RE = /(?<![\w@])@([A-Za-z0-9_]{1,15})(?![\w@])/g;
 // X 的标签可以用中文/假名/数字/下划线，碰到空白、标点、emoji 就结束
 const HASHTAG_RE = /(?<![\w#@])#([\p{L}\p{N}_]{1,80})/gu;
@@ -295,8 +297,15 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     let articleLines = null;
     if (article?.title) {
       articleLines = [`**${article.title}**`];
-      const excerpt = String(article.previewText || '').trim();
-      if (excerpt) articleLines.push('', truncate(excerpt.replace(/\s*\n\s*/g, '\n'), 200));
+      const excerpt = String(article.previewText || '').replace(/\s*\n\s*/g, '\n').trim();
+      if (excerpt) {
+        const clipped = excerpt.length > ARTICLE_EXCERPT_CHARS;
+        articleLines.push('', truncate(excerpt, ARTICLE_EXCERPT_CHARS));
+        // 截断了就在块内补一句，免得看起来像长文只有这么点内容
+        if (clipped) {
+          articleLines.push('', `字数过多，仅转发前 ${ARTICLE_EXCERPT_CHARS} 字`);
+        }
+      }
     }
     if (articleLines) {
       inner.push('');
