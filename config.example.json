@@ -37,7 +37,7 @@
     "perMinute": 15,
     "perDay": 200,
     "timeZone": "Asia/Shanghai",
-    "longUrlChars": 50
+    "longUrlChars": 25
   },
   "net": {
     "proxy": "http://127.0.0.1:17899",

@@ -73,7 +73,7 @@ const DEFAULTS = {
     // 官方软限 30MB（超了会被降级成「文件」、不能直接播放），硬限 200MB。
     maxVideoMB: 30,
     // 正文里超过这么多字符的链接，改成「域名/…」的 Markdown 跳转链接；0 = 不处理
-    longUrlChars: 50,
+    longUrlChars: 25,
     perMinute: 15,
     perDay: 200,
     timeZone: 'Asia/Shanghai',
