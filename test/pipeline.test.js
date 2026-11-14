@@ -26,6 +26,8 @@ import {
   extractHashtags,
   linkifyEntities,
   linkifyMentions,
+  shortenLongUrls,
+  urlLinkLabel,
 } from '../src/format.js';
 import { request } from '../src/http.js';
 import { Poller } from '../src/poller.js';
@@ -1041,6 +1043,52 @@ test('翻译标记：大模型显示模型名，X 保持「由X自动翻译」',
   // 没传 translateBy 也要是 X 的措辞
   const legacy = formatTweetMarkdown(tweet, cfg, { translatedText: '译文' });
   assert.match(legacy, /由X自动翻译/);
+});
+
+test('超长链接改成「域名/…」的跳转链接，阈值可配', () => {
+  const long = 'https://idol-afterschool.com/news/19004?utm_source=twitter&utm_medium=social';
+  const short = 'https://t.co/AbCdEf1234';
+
+  assert.equal(urlLinkLabel(long), 'idol-afterschool.com/…');
+  assert.equal(urlLinkLabel('https://example.com/'), 'example.com');
+  assert.equal(urlLinkLabel('不是链接'), '链接');
+
+  // 超过阈值才处理
+  assert.equal(
+    linkifyEntities(`详情 ${long}`, { longUrlChars: 50 }),
+    `详情 [idol-afterschool.com/…](${long})`,
+  );
+  // 没超过阈值原样输出
+  assert.equal(linkifyEntities(`详情 ${short}`, { longUrlChars: 50 }), `详情 ${short}`);
+  // 0 = 关闭
+  assert.equal(linkifyEntities(`详情 ${long}`, { longUrlChars: 0 }), `详情 ${long}`);
+  // 不传配置也不处理
+  assert.equal(linkifyEntities(`详情 ${long}`, {}), `详情 ${long}`);
+  // 阈值可以调大
+  assert.equal(linkifyEntities(`详情 ${long}`, { longUrlChars: 200 }), `详情 ${long}`);
+  // 只有长链接、没有 @/# 时也要处理
+  assert.equal(linkifyEntities(long, { longUrlChars: 50 }), `[idol-afterschool.com/…](${long})`);
+  // 和标签一起出现时互不影响
+  assert.equal(
+    linkifyEntities(`${long} #爱美`, { longUrlChars: 50, hashtags: ['爱美'] }),
+    `[idol-afterschool.com/…](${long}) [#爱美](https://x.com/hashtag/%E7%88%B1%E7%BE%8E)`,
+  );
+
+  // 卡片里生效；关掉就还原
+  const cfg = baseConfig();
+  cfg.forward.longUrlChars = 50;
+  const tweet = {
+    id: 'x:3',
+    link: 'https://x.com/a/status/3',
+    text: `详情 ${long} 谢谢`,
+    published: new Date('2026-11-14T10:00:00Z'),
+    images: [],
+    isReply: false,
+    isRetweet: false,
+  };
+  assert.match(formatTweetMarkdown(tweet, cfg, {}), /\[idol-afterschool\.com\/…\]\(https:/);
+  cfg.forward.longUrlChars = 0;
+  assert.doesNotMatch(formatTweetMarkdown(tweet, cfg, {}), /\]\(https:\/\/idol-afterschool/);
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {

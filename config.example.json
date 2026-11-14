@@ -20,14 +20,13 @@
     "intervalJitterSec": 60,
     "accountStaggerSec": 3,
     "style": "markdown",
-    "imageMode": "message",
+    "imageMode": "auto",
     "includeLink": true,
     "maxChars": 1200,
     "maxMarkdownChars": 4000,
     "maxPerRun": 5,
     "maxPushAgeHours": 6,
     "maxImages": 6,
-    "imageMode": "auto",
     "mediaInlineUntil": 92,
     "headerCacheHours": 12,
     "avatarCacheHours": 168,
@@ -37,7 +36,8 @@
     "translateHashtags": true,
     "perMinute": 15,
     "perDay": 200,
-    "timeZone": "Asia/Shanghai"
+    "timeZone": "Asia/Shanghai",
+    "longUrlChars": 50
   },
   "net": {
     "proxy": "http://127.0.0.1:17899",

@@ -115,9 +115,38 @@ export function extractHashtags(text) {
  * X 的译文常把标签后面的空格吃掉（`#早稲田祭 お疲れ様` → `#早稲田祭感谢大家`），
  * 只看译文的话会把后面整句汉字都吞进链接里。
  */
+/**
+ * 长链接的显示文字：`idol-afterschool.com/…`（只留域名 + 省略号，点开还是原链接）。
+ */
+export function urlLinkLabel(url) {
+  try {
+    const u = new URL(url);
+    const host = u.host.replace(/^www\./i, '');
+    const hasMore = (u.pathname && u.pathname !== '/') || u.search || u.hash;
+    return hasMore ? `${host}/…` : host;
+  } catch {
+    return '链接';
+  }
+}
+
+/**
+ * 超长链接改成 Markdown 跳转链接，避免整条 URL 把卡片撑爆。
+ * `maxChars` 为 0/未配置时不处理。
+ */
+export function shortenLongUrls(text, maxChars) {
+  const limit = Number(maxChars);
+  if (!limit || limit <= 0) return String(text || '');
+  return String(text || '').replace(URL_RE, (url) =>
+    url.length > limit ? `[${urlLinkLabel(url)}](${url})` : url,
+  );
+}
+
 export function linkifyEntities(text, options = {}) {
   const src = String(text || '');
-  if (!src.includes('@') && !src.includes('#')) return src;
+  const limit = Number(options.longUrlChars);
+  const hasEntities = src.includes('@') || src.includes('#');
+  const hasLongUrl = limit > 0 && /https?:\/\//i.test(src);
+  if (!hasEntities && !hasLongUrl) return src;
 
   const urls = [];
   const masked = src.replace(URL_RE, (m) => {
@@ -151,7 +180,13 @@ export function linkifyEntities(text, options = {}) {
     });
   }
 
-  return withTags.replace(/\u0000(\d+)\u0000/g, (_m, i) => urls[Number(i)] ?? '');
+  return withTags.replace(/\u0000(\d+)\u0000/g, (_m, i) => {
+    const url = urls[Number(i)] ?? '';
+    if (limit > 0 && url.length > limit) {
+      return `[${urlLinkLabel(url)}](${url})`;
+    }
+    return url;
+  });
 }
 
 // 只由「横线类字符」组成的行会被当成分隔线（`---`），还会把**上一行**变成标题。
@@ -226,7 +261,12 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
   if (bodyText) {
     // 标签边界取原文的：译文常把标签后面的空格吃掉，只看译文会把整句吞进链接
     lines.push(
-      escapeMarkdownText(linkifyEntities(bodyText, { hashtags: extractHashtags(originalBody) })),
+      escapeMarkdownText(
+        linkifyEntities(bodyText, {
+          hashtags: extractHashtags(originalBody),
+          longUrlChars: cfg.forward.longUrlChars,
+        }),
+      ),
     );
   }
 
@@ -320,7 +360,10 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     } else if (quoteText) {
       inner.push('');
       for (const line of escapeMarkdownText(
-        linkifyEntities(quoteText, { hashtags: extractHashtags(quote.text) }),
+        linkifyEntities(quoteText, {
+          hashtags: extractHashtags(quote.text),
+          longUrlChars: cfg.forward.longUrlChars,
+        }),
       ).split('\n')) {
         inner.push(line);
       }
