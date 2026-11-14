@@ -296,6 +296,12 @@ set CLASH_EXE=C:\path\to\clash-win64.exe
 | `forward.markdownImage` | — | 老配置项，等价于 `imageMode: "inline"`；新配置直接用 `imageMode`，不需要它 |
 | `forward.perMinute` / `perDay` | `15` / `200` | 每个会话的发送频率限制 |
 | `forward.timeZone` | `Asia/Shanghai` | 卡片时间使用的时区 |
+| `translate.provider` | `x` | 翻译走哪条路：`x` = X 自带翻译；`api` = 大模型（失败自动回退到 `x`） |
+| `translate.api.displayName` | — | 模型显示名，翻译后会标成 `由<显示名>翻译` |
+| `translate.api.model` | — | 模型名（OpenAI 兼容接口的 `model` 字段） |
+| `translate.api.baseUrl` | — | 接口地址，例如 `https://api.deepseek.com`（自动拼 `/chat/completions`） |
+| `translate.api.apiKey` | — | 接口密钥，`Authorization: Bearer <key>` |
+| `translate.api.timeoutMs` | `30000` | 单次请求超时 |
 | `accounts[]` | — | 账号列表，见下 |
 
 单个账号的配置：
@@ -341,7 +347,7 @@ set CLASH_EXE=C:\path\to\clash-win64.exe
 | `/退订 <账号>` | 取消订阅 |
 | `/最新 [账号]` | 发一条最新推文：不带参数取本会话已订阅账号里最新的一条；带账号（如 `/最新 xaccount1`）则取该账号最新，**不需要先订阅** |
 | `/转推 <推文id>` | 立刻把指定推文发出来（不看订阅、不看新旧）。id 就是链接里 `status/` 后面那串数字，也可以直接贴整条链接 |
-| `/翻译 开` / `/翻译 关` | 是否使用 X 自带的中文翻译（正文和引用一起翻） |
+| `/翻译 开` / `/翻译 关` | 是否翻译正文（正文 / 引用 / 被回复原推一起翻）；具体用 X 还是大模型由配置决定 |
 | `/回复 <账号> 开\|关` | 是否转发该账号的「回复」 |
 | `/转贴 <账号> 开\|关` | 是否转发该账号的「转贴」 |
 
@@ -562,7 +568,18 @@ Markdown 会把这种「纯横线的一行」当分隔线，还会顺手把**上
 **为什么 `#标签` 不翻译？** X 自己的翻译接口不翻标签 —— 实测换过 16 种
 `translationSource`、8 种语言码、Android/iOS 的 UA，`#夢のポップスター公演` 都原样返回
 （标签在它眼里是 entity，不进翻译）。X 客户端里能翻，走的是另一套没开放的后端。
-本项目坚持不接第三方翻译，所以标签保留原文；正文、引用、被回复原推都会翻。
+默认（`translate.provider: "x"`）时标签保留原文；正文、引用、被回复原推都会翻。
+
+**翻译可以选谁来翻。** `translate.provider` 有两个值：
+
+| 值 | 行为 |
+| --- | --- |
+| `x`（默认） | 用 X 自带的翻译接口，页脚标 `由X自动翻译` |
+| `api` | 调 OpenAI 兼容的 `/chat/completions`（DeepSeek、OpenAI、本地 vLLM 都行），页脚标 `由<模型显示名>翻译` |
+
+`api` 模式下：提示词要求保留 `@提及` / `#标签` / 链接 / emoji 不动，只翻译正文；
+接口报错、超时、返回空都会**自动回退到 X 翻译**（日志里一条 `大模型翻译失败，回退到 X 自动翻译`），
+不会因为模型挂了就不翻译。
 
 **图片下面那行「某某 及另外 N 人」是哪来的？** X 的图片可以标记人物，
 数据在 `extended_entities.media[].features.all.tags[]`（每个 tag 带 `name` / `screen_name` / `user_id`）。

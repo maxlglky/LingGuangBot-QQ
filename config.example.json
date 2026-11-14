@@ -34,8 +34,7 @@
     "mediaCacheHours": 6,
     "mediaPruneAt": 90,
     "mediaKeep": 60,
-    "originalImage": false,
-    "maxVideoMB": 30,
+    "translateHashtags": true,
     "perMinute": 15,
     "perDay": 200,
     "timeZone": "Asia/Shanghai"
@@ -43,6 +42,16 @@
   "net": {
     "proxy": "http://127.0.0.1:17899",
     "xCookie": "auth_token=你的auth_token; ct0=你的ct0"
+  },
+  "translate": {
+    "provider": "x",
+    "api": {
+      "displayName": "",
+      "model": "",
+      "baseUrl": "https://api.deepseek.com",
+      "apiKey": "",
+      "timeoutMs": 30000
+    }
   },
   "commands": {
     "enable": [

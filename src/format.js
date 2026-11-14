@@ -366,8 +366,9 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
   // 页脚压成一行：一律用「推文本身的发布时间」，与 X 页面上显示的一致。
   // 转推时卡片展示的是原推内容，X 上也显示原推时间，所以不再用转推时间。
   if (translatedText) {
-    // 紧贴在时间行上方，不缩进、不隔空行
-    lines.push('', '由X自动翻译');
+    // 紧贴在时间行上方，不缩进、不隔空行；走大模型时显示模型名，否则沿用 X 的措辞
+    const by = String(ctx.translateBy || '').trim();
+    lines.push('', by && by !== 'X' ? `由${by}翻译` : '由X自动翻译');
   }
 
   const meta = [];

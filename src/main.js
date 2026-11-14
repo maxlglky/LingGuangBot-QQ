@@ -77,6 +77,17 @@ const DEFAULTS = {
     timeZone: 'Asia/Shanghai',
   },
   net: { proxy: '' },
+  // 翻译：provider = 'x' 用 X 自带翻译；'api' 走大模型（失败自动回退到 X）
+  translate: {
+    provider: 'x',
+    api: {
+      displayName: '',
+      model: '',
+      baseUrl: '',
+      apiKey: '',
+      timeoutMs: 30000,
+    },
+  },
   commands: DEFAULT_COMMANDS,
 };
 

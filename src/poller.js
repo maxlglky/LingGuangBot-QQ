@@ -10,6 +10,7 @@ import {
 } from './xgraphql.js';
 import { fetchTweetDetail, resolveRepost } from './fx.js';
 import { buildArkCard, formatTweet, formatTweetMarkdown } from './format.js';
+import { translateConfig, translateWithApi } from './translate.js';
 import { originalImageUrl, sleep } from './util.js';
 
 /**
@@ -197,6 +198,32 @@ export class Poller {
       this.logger.warn(`翻译失败（本条用原文）: ${err.message}`);
       return '';
     }
+  }
+
+  /**
+   * 翻译一段正文，按配置选择大模型或 X 自带翻译。
+   * 大模型失败会自动回退到 X 翻译（并记一条 warn）。
+   * @returns {Promise<{text: string, by: string}>} by = 显示在「由…翻译」里的名字
+   */
+  async translateBody(acfg, text, tweetId) {
+    const conf = translateConfig(acfg);
+    const source = String(text || '').trim();
+
+    if (conf.provider === 'api') {
+      const by = conf.api.displayName || conf.api.model || 'AI';
+      try {
+        const out = await translateWithApi(source, conf.api, {
+          request: this.request,
+          logger: this.logger,
+        });
+        if (out) return { text: out, by };
+      } catch (err) {
+        this.logger.warn(`大模型翻译失败，回退到 X 自动翻译: ${err.message}`);
+      }
+    }
+
+    const viaX = await this.translateTweet(acfg, tweetId);
+    return viaX ? { text: viaX, by: 'X' } : { text: '', by: '' };
   }
 
   /** 回复类型：把被回复的原推也拉下来，作为缩进块附在卡片里（拉不到就跳过）。 */
@@ -458,15 +485,31 @@ export class Poller {
       let translatedText = '';
       let translatedQuoteText = '';
       let translatedReplyText = '';
+      let translateBy = '';
       if (groups.some((g) => g.translate === true)) {
-        translatedText = await this.translateTweet(acfg, detail?.id || statusId);
+        const main = await this.translateBody(
+          acfg,
+          detail?.text || displayTweet?.text || tweet?.text,
+          detail?.id || statusId,
+        );
+        translatedText = main.text;
+        translateBy = main.by;
         if (detail?.quote?.id) {
-          translatedQuoteText = await this.translateTweet(acfg, detail.quote.id);
+          const q = await this.translateBody(acfg, detail.quote.text, detail.quote.id);
+          translatedQuoteText = q.text;
+          if (!translateBy) translateBy = q.by;
         }
         // 被回复的那条原推也要翻译（回复对象可能是任何账号，甚至没订阅的）
         if (displayTweet?.replyToStatusId) {
-          translatedReplyText = await this.translateTweet(acfg, displayTweet.replyToStatusId);
+          const r = await this.translateBody(
+            acfg,
+            detail?.replyTo?.text || '',
+            displayTweet.replyToStatusId,
+          );
+          translatedReplyText = r.text;
+          if (!translateBy) translateBy = r.by;
         }
+        if (!translatedText) translateBy = '';
       }
 
       for (const group of groups) {
@@ -509,6 +552,7 @@ export class Poller {
                   translatedText: group.translate ? translatedText : '',
                   translatedQuoteText: group.translate ? translatedQuoteText : '',
                   translatedReplyText: group.translate ? translatedReplyText : '',
+                  translateBy: group.translate ? translateBy : '',
                   photoTags: mainPhotoTags,
                   cardSource,
                 }),
@@ -673,15 +717,34 @@ export class Poller {
       .filter(Boolean)
       .map((url) => ({ url, variants: [{ url, bitrate: 0 }] }));
     const wantTranslate = this.store?.isTranslateOn?.(groupOpenid) === true;
-    const translatedText = wantTranslate
-      ? await this.translateTweet(acfg, detail?.id || statusId)
-      : '';
-    const translatedQuoteText =
-      wantTranslate && detail?.quote?.id ? await this.translateTweet(acfg, detail.quote.id) : '';
-    const translatedReplyText =
-      wantTranslate && displayTweet?.replyToStatusId
-        ? await this.translateTweet(acfg, displayTweet.replyToStatusId)
-        : '';
+    let translatedText = '';
+    let translatedQuoteText = '';
+    let translatedReplyText = '';
+    let translateBy = '';
+    if (wantTranslate) {
+      const main = await this.translateBody(
+        acfg,
+        detail?.text || displayTweet?.text || tweet?.text,
+        detail?.id || statusId,
+      );
+      translatedText = main.text;
+      translateBy = main.by;
+      if (detail?.quote?.id) {
+        const q = await this.translateBody(acfg, detail.quote.text, detail.quote.id);
+        translatedQuoteText = q.text;
+        if (!translateBy) translateBy = q.by;
+      }
+      if (displayTweet?.replyToStatusId) {
+        const r = await this.translateBody(
+          acfg,
+          detail?.replyTo?.text || '',
+          displayTweet.replyToStatusId,
+        );
+        translatedReplyText = r.text;
+        if (!translateBy) translateBy = r.by;
+      }
+      if (!translatedText) translateBy = '';
+    }
 
     return this.qq.deliver(groupOpenid, text, displayTweet.images || [], {
       replyTo: options.replyTo || null,
@@ -706,6 +769,7 @@ export class Poller {
           translatedText,
           translatedQuoteText,
           translatedReplyText,
+          translateBy,
           photoTags: mainPhotoTags,
           cardSource,
         }),

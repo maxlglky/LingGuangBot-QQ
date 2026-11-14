@@ -17,6 +17,7 @@ import {
 import { dedupeKey, toTweet } from '../src/tweet.js';
 import { pickOwnAvatar, extractPhotoTags, extractCardLink, userInfo } from '../src/xgraphql.js';
 import { isVerifiedAuthor } from '../src/fx.js';
+import { cleanTranslation, translateConfig, translateWithApi } from '../src/translate.js';
 import { formatFooterTime, originalImageUrl } from '../src/util.js';
 import {
   formatTweet,
@@ -939,6 +940,107 @@ test('长文只要转发就是节选：摘要尾部补字数提示（短摘要 /
   });
   assert.match(short, /长文仅节选前 120 字，全文见原帖/);
   assert.doesNotMatch(short, /字数过多/);
+});
+
+test('翻译：可切换大模型 / X 自动翻译，失败回退到 X', async () => {
+  // 默认走 X
+  assert.deepEqual(translateConfig({}).provider, 'x');
+  assert.deepEqual(translateConfig({ translate: { provider: 'api' } }).provider, 'api');
+  const api = translateConfig({
+    translate: {
+      provider: 'api',
+      api: { displayName: '大肥鱼', model: 'deepseek-flash', baseUrl: 'https://api.deepseek.com', apiKey: 'k' },
+    },
+  }).api;
+  assert.equal(api.displayName, '大肥鱼');
+  assert.equal(api.timeoutMs, 30000, '没配超时用默认值');
+
+  // 模型返回被 ``` 或「译文：」包裹时要清掉
+  assert.equal(cleanTranslation('```\n你好\n```'), '你好');
+  assert.equal(cleanTranslation('译文：你好'), '你好');
+  assert.equal(cleanTranslation('  你好  '), '你好');
+
+  // 请求体：OpenAI 兼容的 /chat/completions
+  const calls = [];
+  const fakeRequest = async (url, opts) => {
+    calls.push({ url, opts });
+    return { status: 200, data: { choices: [{ message: { content: '这是译文' } }] } };
+  };
+  const out = await translateWithApi('これはテスト', api, { request: fakeRequest });
+  assert.equal(out, '这是译文');
+  assert.equal(calls[0].url, 'https://api.deepseek.com/chat/completions');
+  const body = JSON.parse(calls[0].opts.body);
+  assert.equal(body.model, 'deepseek-flash');
+  assert.equal(body.messages[1].content, 'これはテスト');
+  assert.match(calls[0].opts.headers.authorization, /^Bearer k$/);
+
+  // 接口报错 / 空内容都要抛错（交给上层回退）
+  await assert.rejects(
+    translateWithApi('x', api, {
+      request: async () => ({ status: 400, data: { error: { message: '模型不存在' } } }),
+    }),
+    /模型不存在/,
+  );
+  await assert.rejects(
+    translateWithApi('x', api, {
+      request: async () => ({ status: 200, data: { choices: [{ message: { content: '  ' } }] } }),
+    }),
+    /没有返回内容/,
+  );
+  await assert.rejects(translateWithApi('x', {}, { request: fakeRequest }), /配置不全/);
+
+  // poller：API 失败要回退到 X 翻译，并标记 by='X'
+  const poller = new Poller({ cfg: baseConfig(), qq: null, store: null, logger: captureLogger() });
+  poller.translateTweet = async () => 'X 给的译文';
+
+  const apiCfg = (overrides = {}) => ({
+    ...baseConfig(),
+    translate: {
+      provider: 'api',
+      api: { displayName: '大肥鱼', model: 'm', baseUrl: 'https://api.deepseek.com', apiKey: 'k', ...overrides },
+    },
+  });
+
+  // 大模型可用 → by 用显示名
+  poller.request = fakeRequest;
+  const ok = await poller.translateBody(apiCfg(), 'これはテスト', '123');
+  assert.equal(ok.by, '大肥鱼');
+  assert.equal(ok.text, '这是译文');
+
+  // 配置不全 → 抛出后被兜住，回退 X
+  const fallback = await poller.translateBody(apiCfg({ apiKey: '' }), 'これはテスト', '123');
+  assert.equal(fallback.by, 'X');
+  assert.equal(fallback.text, 'X 给的译文');
+
+  // provider=x 时不会调大模型
+  const onlyX = await poller.translateBody(
+    { ...baseConfig(), translate: { provider: 'x' } },
+    'これはテスト',
+    '123',
+  );
+  assert.equal(onlyX.by, 'X');
+});
+
+test('翻译标记：大模型显示模型名，X 保持「由X自动翻译」', () => {
+  const cfg = baseConfig();
+  const tweet = {
+    id: 'x:9',
+    link: 'https://x.com/a/status/9',
+    text: '本文',
+    published: new Date('2026-11-04T09:05:00Z'),
+    images: [],
+    isReply: false,
+    isRetweet: false,
+  };
+  const byModel = formatTweetMarkdown(tweet, cfg, { translatedText: '译文', translateBy: '大肥鱼' });
+  assert.match(byModel, /由大肥鱼翻译/);
+
+  const byX = formatTweetMarkdown(tweet, cfg, { translatedText: '译文', translateBy: 'X' });
+  assert.match(byX, /由X自动翻译/);
+
+  // 没传 translateBy 也要是 X 的措辞
+  const legacy = formatTweetMarkdown(tweet, cfg, { translatedText: '译文' });
+  assert.match(legacy, /由X自动翻译/);
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {
